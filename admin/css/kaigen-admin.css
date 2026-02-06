@@ -1,0 +1,108 @@
+/* Kaigen Connector Admin Styles */
+
+.kaigen-meta-box {
+    padding: 10px 0;
+}
+
+.kaigen-meta-box p {
+    margin-bottom: 15px;
+    color: #666;
+}
+
+.kaigen-meta-box .button {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+}
+
+.kaigen-logs-header {
+    margin: 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.kaigen-logs-header #kaigen-sync-status {
+    display: inline-flex;
+    align-items: center;
+}
+
+.kaigen-status-success {
+    color: #46b450;
+    font-weight: 600;
+}
+
+.kaigen-status-error {
+    color: #dc3232;
+    font-weight: 600;
+}
+
+.kaigen-status-pending {
+    color: #f18500;
+    font-weight: 600;
+}
+
+#kaigen-connection-status {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 10px;
+}
+
+#kaigen-connection-status .spinner {
+    float: none;
+    margin: 0;
+}
+
+#kaigen-sync-status .spinner {
+    float: none;
+    margin: 0;
+}
+
+.kaigen-editor-panel {
+    padding: 16px;
+}
+
+.kaigen-editor-panel p {
+    margin-bottom: 12px;
+    color: #757575;
+}
+
+/* Post types table */
+.wp-list-table.kaigen-post-types {
+    margin-top: 20px;
+}
+
+.wp-list-table.kaigen-post-types th.check-column {
+    width: 40px;
+}
+
+/* Tab navigation */
+.nav-tab-wrapper {
+    margin-bottom: 20px;
+}
+
+/* Form table adjustments */
+.form-table th {
+    width: 200px;
+}
+
+.form-table .regular-text {
+    width: 400px;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+    .form-table .regular-text {
+        width: 100%;
+    }
+
+    .kaigen-logs-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+
+
+
+
