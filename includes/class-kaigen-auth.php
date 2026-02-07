@@ -118,6 +118,7 @@ class Kaigen_Auth {
                 'Authorization' => 'Bearer ' . $api_key,
                 'Content-Type' => 'application/json'
             ),
+            'body' => wp_json_encode(array('wpUrl' => home_url())),
             'timeout' => 15
         ));
 
@@ -186,9 +187,20 @@ class Kaigen_Auth {
                 $auth_header = isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION']) ? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] : '';
             }
 
+            if (empty($auth_header) && function_exists('getallheaders')) {
+                $headers = getallheaders();
+                if (isset($headers['Authorization'])) {
+                    $auth_header = $headers['Authorization'];
+                } elseif (isset($headers['authorization'])) {
+                    $auth_header = $headers['authorization'];
+                }
+            }
+
             if (empty($auth_header)) {
                 return false;
             }
+
+            $auth_header = trim($auth_header);
 
             // Extract the key
             if (strpos($auth_header, 'Bearer ') === 0) {
@@ -273,7 +285,6 @@ class Kaigen_Auth {
         return update_option('kaigen_settings', $settings);
     }
 }
-
 
 
 

@@ -227,7 +227,11 @@ class Kaigen_Admin
             wp_die(__('You do not have sufficient permissions to access this page.', 'kaigen-connector'));
         }
 
-        $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'authentication';
+        $active_tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'authentication';
+        $allowed_tabs = array('authentication', 'post-types', 'permissions', 'logs');
+        if (!in_array($active_tab, $allowed_tabs, true)) {
+            $active_tab = 'authentication';
+        }
         $settings = get_option('kaigen_settings', array());
         $auth = Kaigen_Auth::get_instance();
         $content = Kaigen_Content::get_instance();

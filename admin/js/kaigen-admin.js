@@ -1,6 +1,15 @@
 jQuery(document).ready(function($) {
     'use strict';
 
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // Toggle authentication method fields
     $('input[name="kaigen_settings[auth_method]"]').on('change', function() {
         var method = $(this).val();
@@ -39,7 +48,8 @@ jQuery(document).ready(function($) {
                 if (response.success) {
                     $status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> ' + kaigenAdmin.strings.success);
                 } else {
-                    $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' ' + response.data.message);
+                    var message = response && response.data && response.data.message ? escapeHtml(response.data.message) : '';
+                    $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' ' + message);
                 }
             },
             error: function() {
@@ -79,7 +89,8 @@ jQuery(document).ready(function($) {
                         location.reload();
                     }, 1000);
                 } else {
-                    $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' ' + response.data.message);
+                    var message = response && response.data && response.data.message ? escapeHtml(response.data.message) : '';
+                    $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' ' + message);
                 }
             },
             error: function() {

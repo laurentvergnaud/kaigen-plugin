@@ -152,7 +152,7 @@ class Kaigen_Editor_Button {
             if (typeof QTags !== 'undefined') {
                 QTags.addButton(
                     'kaigen_open',
-                    '<?php _e('Open in Kaigen', 'kaigen-connector'); ?>',
+                    '<?php echo esc_js(__('Open in Kaigen', 'kaigen-connector')); ?>',
                     function() {
                         window.open('<?php echo esc_js($editor_url); ?>', '_blank');
                     }
@@ -166,7 +166,7 @@ class Kaigen_Editor_Button {
                 'target="_blank" ' +
                 'rel="noopener noreferrer" ' +
                 'style="margin-left: 10px;">' +
-                '<?php _e('Open in Kaigen', 'kaigen-connector'); ?>' +
+                '<?php echo esc_js(__('Open in Kaigen', 'kaigen-connector')); ?>' +
                 '</a>'
             );
         });
@@ -178,27 +178,23 @@ class Kaigen_Editor_Button {
      * Get editor URL for a post
      */
     private function get_editor_url($post_id) {
-        $api = Kaigen_API::get_instance();
         $auth = Kaigen_Auth::get_instance();
 
-        // Try to get project ID from validation
         $validation = $auth->validate_with_kaigen();
         $project_id = isset($validation['project_id']) ? $validation['project_id'] : 'default';
 
         $api_url = $auth->get_api_url();
-        $wp_url = home_url();
+        $wp_url = rtrim(home_url(), '/');
 
-        // Build editor URL
         $editor_url = trailingslashit($api_url) . 'en/projects/' . $project_id . '/editor';
         $editor_url = add_query_arg(array(
             'wp_post_id' => $post_id,
-            'wp_site' => urlencode($wp_url)
+            'wp_site' => $wp_url
         ), $editor_url);
 
         return apply_filters('kaigen_editor_url', $editor_url, $post_id);
     }
 }
-
 
 
 

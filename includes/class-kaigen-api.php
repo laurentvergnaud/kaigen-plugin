@@ -44,7 +44,7 @@ class Kaigen_API {
         );
 
         if ($data && in_array($method, array('POST', 'PUT', 'PATCH'))) {
-            $args['body'] = json_encode($data);
+            $args['body'] = wp_json_encode($data);
         }
 
         $response = wp_remote_request($url, $args);
@@ -143,7 +143,7 @@ class Kaigen_API {
         $wp_url = home_url();
         $editor_url = add_query_arg(array(
             'wp_post_id' => $post_id,
-            'wp_site' => urlencode($wp_url)
+            'wp_site' => $wp_url
         ), $result['editorUrl']);
 
         return $editor_url;
@@ -234,7 +234,6 @@ class Kaigen_API {
         return array_slice(array_reverse($logs), 0, $limit);
     }
 }
-
 
 
 

@@ -205,25 +205,21 @@ class Kaigen_REST_API
         }
 
         $content = Kaigen_Content::get_instance();
+        $project_id = $request->get_param('project_id');
+        if (!$project_id) {
+            $project_id = '';
+        }
+        $platform_id = $request->get_param('platform_id');
+        if (!$platform_id) {
+            $platform_id = null;
+        }
+        $site_url = $request->get_param('site_url');
+        if (!$site_url) {
+            $site_url = '';
+        }
 
-        $post_data = array(
-            'id' => $post->ID,
-            'title' => $post->post_title,
-            'content' => $post->post_content,
-            'excerpt' => $post->post_excerpt,
-            'url' => get_permalink($post->ID),
-            'postType' => $post->post_type,
-            'status' => $post->post_status,
-            'author' => get_the_author_meta('display_name', $post->post_author),
-            'publishedDate' => get_the_date('c', $post->ID),
-            'modifiedDate' => get_the_modified_date('c', $post->ID),
-            'categories' => wp_get_post_categories($post->ID, array('fields' => 'names')),
-            'tags' => wp_get_post_tags($post->ID, array('fields' => 'names')),
-            'customFields' => get_post_meta($post->ID),
-            'editorType' => $content->get_editor_type($post->post_type)
-        );
-
-        return rest_ensure_response($post_data);
+        $document = $content->build_wordpress_document_v2($post->ID, $project_id, $platform_id, $site_url);
+        return rest_ensure_response($document);
     }
 
     /**
@@ -234,6 +230,9 @@ class Kaigen_REST_API
         $post_id = $request->get_param('id');
         $data = $request->get_json_params();
         $data['post_id'] = $post_id;
+        $data['project_id'] = $request->get_param('project_id') ?: '';
+        $data['platform_id'] = $request->get_param('platform_id') ?: null;
+        $data['site_url'] = $request->get_param('site_url') ?: '';
 
         $updater = Kaigen_Update::get_instance();
         $result = $updater->handle_update_request($data);

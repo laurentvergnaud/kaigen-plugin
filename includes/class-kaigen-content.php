@@ -352,6 +352,165 @@ class Kaigen_Content
     }
 
     /**
+     * Build canonical WordPress document payload (schema_version = 2)
+     */
+    public function build_wordpress_document_v2($post_id, $project_id = '', $platform_id = null, $site_url = '')
+    {
+        $post = get_post($post_id);
+        if (!$post) {
+            return null;
+        }
+
+        $custom_fields = $this->get_post_custom_fields($post_id);
+        $seo = $this->get_post_seo_data($post_id);
+        $taxonomies = $this->get_post_taxonomies_v2($post_id, $post->post_type);
+        $featured_media_id = get_post_thumbnail_id($post_id);
+
+        return array(
+            'schema_version' => 2,
+            'post' => array(
+                'id' => intval($post->ID),
+                'project_id' => strval($project_id),
+                'platform_id' => $platform_id ? strval($platform_id) : null,
+                'site_url' => !empty($site_url) ? esc_url_raw($site_url) : home_url(),
+                'post_type' => strval($post->post_type),
+                'status' => strval($post->post_status),
+                'title' => strval($post->post_title),
+                'content' => strval($post->post_content),
+                'excerpt' => strval($post->post_excerpt),
+                'slug' => strval($post->post_name),
+                'date' => get_post_time('c', true, $post),
+                'url' => get_permalink($post->ID),
+                'author' => array(
+                    'id' => intval($post->post_author),
+                    'name' => get_the_author_meta('display_name', $post->post_author),
+                ),
+            ),
+            'seo' => $seo,
+            'taxonomies' => $taxonomies,
+            'custom_fields' => array(
+                'acf' => isset($custom_fields['acf']) && is_array($custom_fields['acf']) ? $custom_fields['acf'] : array(),
+                'meta' => isset($custom_fields['meta']) && is_array($custom_fields['meta']) ? $custom_fields['meta'] : array(),
+            ),
+            'media' => array(
+                'featured_media_id' => $featured_media_id ? intval($featured_media_id) : null,
+                'featured_media_url' => $featured_media_id ? wp_get_attachment_url($featured_media_id) : null,
+            ),
+            'extensions' => array(
+                'editor_type' => $this->get_editor_type($post->post_type),
+            ),
+        );
+    }
+
+    /**
+     * Build taxonomy payload for canonical document.
+     */
+    private function get_post_taxonomies_v2($post_id, $post_type)
+    {
+        $taxonomies = array();
+        $taxonomy_objects = get_object_taxonomies($post_type, 'objects');
+
+        if (!is_array($taxonomy_objects)) {
+            return $taxonomies;
+        }
+
+        foreach ($taxonomy_objects as $taxonomy) {
+            if (!isset($taxonomy->name)) {
+                continue;
+            }
+            $terms = wp_get_object_terms($post_id, $taxonomy->name);
+            if (is_wp_error($terms) || !is_array($terms)) {
+                continue;
+            }
+
+            $ids = array();
+            $names = array();
+            foreach ($terms as $term) {
+                if (!isset($term->term_id) || !isset($term->name)) {
+                    continue;
+                }
+                $ids[] = intval($term->term_id);
+                $names[] = strval($term->name);
+            }
+
+            $taxonomies[$taxonomy->name] = array(
+                'ids' => $ids,
+                'names' => $names,
+            );
+        }
+
+        return $taxonomies;
+    }
+
+    /**
+     * Read normalized SEO payload from post meta.
+     */
+    private function get_post_seo_data($post_id)
+    {
+        $seo_plugin = $this->detect_seo_plugin();
+        $seo_keys = $this->get_seo_meta_keys($seo_plugin);
+
+        $title = get_post_meta($post_id, $seo_keys['title'], true);
+        $description = get_post_meta($post_id, $seo_keys['description'], true);
+        $focus_keyword = get_post_meta($post_id, $seo_keys['focus_keyword'], true);
+
+        $raw_meta = array();
+        $all_meta = get_post_meta($post_id);
+        if (is_array($all_meta)) {
+            foreach ($all_meta as $key => $value) {
+                $is_seo_key = strpos($key, '_yoast_wpseo_') === 0
+                    || strpos($key, 'rank_math_') === 0
+                    || strpos($key, '_seopress_') === 0;
+                if (!$is_seo_key) {
+                    continue;
+                }
+
+                if (is_array($value) && count($value) === 1) {
+                    $raw_meta[$key] = $value[0];
+                } else {
+                    $raw_meta[$key] = $value;
+                }
+            }
+        }
+
+        return array(
+            'plugin' => strval($seo_plugin),
+            'title' => $title !== '' ? strval($title) : null,
+            'description' => $description !== '' ? strval($description) : null,
+            'focus_keyword' => $focus_keyword !== '' ? strval($focus_keyword) : null,
+            'raw_meta' => $raw_meta,
+        );
+    }
+
+    /**
+     * Resolve SEO meta keys by plugin.
+     */
+    private function get_seo_meta_keys($seo_plugin)
+    {
+        if ($seo_plugin === 'rankmath') {
+            return array(
+                'title' => 'rank_math_title',
+                'description' => 'rank_math_description',
+                'focus_keyword' => 'rank_math_focus_keyword',
+            );
+        }
+
+        if ($seo_plugin === 'seopress') {
+            return array(
+                'title' => '_seopress_titles_title',
+                'description' => '_seopress_titles_desc',
+                'focus_keyword' => '_seopress_analysis_target_kw',
+            );
+        }
+
+        return array(
+            'title' => '_yoast_wpseo_title',
+            'description' => '_yoast_wpseo_metadesc',
+            'focus_keyword' => '_yoast_wpseo_focuskw',
+        );
+    }
+
+    /**
      * Get internal linking candidates
      */
     public function get_internal_links_candidates($post_type = null, $limit = 100)
