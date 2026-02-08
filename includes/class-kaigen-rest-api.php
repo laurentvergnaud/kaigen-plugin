@@ -47,6 +47,13 @@ class Kaigen_REST_API
             'permission_callback' => array($this, 'check_permission')
         ));
 
+        // Create new content from canonical v2 payload
+        register_rest_route($this->namespace, '/content', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'create_post'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+
         // Get specific post
         register_rest_route($this->namespace, '/content/(?P<id>\d+)', array(
             'methods' => 'GET',
@@ -182,6 +189,47 @@ class Kaigen_REST_API
             'page' => $page,
             'per_page' => $per_page
         ));
+    }
+
+    /**
+     * Create a new post from canonical v2 payload
+     */
+    public function create_post($request)
+    {
+        $data = $request->get_json_params();
+        if (!is_array($data)) {
+            return new WP_Error('invalid_payload', __('Invalid JSON payload', 'kaigen-connector'), array('status' => 400));
+        }
+
+        if (!isset($data['post']) || !is_array($data['post'])) {
+            return new WP_Error('missing_post', __('post object is required', 'kaigen-connector'), array('status' => 400));
+        }
+
+        $post_type = isset($data['post']['post_type']) ? sanitize_key($data['post']['post_type']) : 'post';
+        if ($post_type === '') {
+            $post_type = 'post';
+        }
+
+        // Check if post type is enabled
+        $settings = get_option('kaigen_settings', array());
+        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        if (!in_array($post_type, $enabled_types, true)) {
+            return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
+        }
+
+        $data['post']['post_type'] = $post_type;
+        $data['project_id'] = $request->get_param('project_id') ?: '';
+        $data['platform_id'] = $request->get_param('platform_id') ?: null;
+        $data['site_url'] = $request->get_param('site_url') ?: '';
+
+        $updater = Kaigen_Update::get_instance();
+        $result = $updater->handle_create_request($data);
+
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return rest_ensure_response($result);
     }
 
     /**
