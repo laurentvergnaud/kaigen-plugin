@@ -33,6 +33,21 @@ Connect your WordPress site to Kaigen for AI-powered content generation and mana
 1. Upload the `kaigen-connector` folder to `/wp-content/plugins/`
 2. Activate the plugin through the 'Plugins' menu in WordPress
 
+## Updates
+
+This plugin is configured to check for updates from the GitHub repository:
+
+- Repository: `https://github.com/laurentvergnaud/kaigen-plugin`
+- Delivery method: GitHub Releases ZIP assets
+
+To publish an update that WordPress can install correctly:
+
+1. Build the release ZIP with `scripts/build-kaigen-plugin-release.sh`
+2. Create a GitHub release in `laurentvergnaud/kaigen-plugin`
+3. Upload the generated `kaigen-connector.zip` as a release asset
+
+The uploaded asset name should start with `kaigen-connector` and end with `.zip`.
+
 ## Configuration
 
 ### Method 1: API Key Authentication (Recommended)
@@ -197,7 +212,7 @@ add_action('kaigen_after_update', function($post_id, $result) {
 For support, please contact:
 - Email: support@kaigen.app
 - Documentation: https://docs.kaigen.app
-- GitHub Issues: https://github.com/kaigen/wordpress-plugin
+- GitHub Issues: https://github.com/laurentvergnaud/kaigen-plugin/issues
 
 ## Changelog
 
@@ -219,7 +234,6 @@ GPL v2 or later
 ## Credits
 
 Developed by the Kaigen team.
-
 
 
 

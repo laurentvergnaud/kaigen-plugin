@@ -1,0 +1,76 @@
+name: Release WordPress plugin
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-main
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version
+        id: vars
+        shell: bash
+        run: |
+          VERSION="$(date -u +'%Y.%m.%d').${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          TAG="v${VERSION}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare package directory
+        shell: bash
+        run: |
+          mkdir -p build/kaigen-connector
+
+          rsync -av ./ build/kaigen-connector/ \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'build/' \
+            --exclude 'node_modules/' \
+            --exclude 'tests/' \
+            --exclude '.DS_Store'
+
+      - name: Update plugin version in build
+        shell: bash
+        run: |
+          PLUGIN_FILE="build/kaigen-connector/kaigen-connector.php"
+          README_FILE="build/kaigen-connector/readme.txt"
+
+          sed -i -E "s/^([[:space:]]*\\*?[[:space:]]*Version:[[:space:]]*).*/\\1${{ steps.vars.outputs.version }}/" "$PLUGIN_FILE"
+
+          if [ -f "$README_FILE" ]; then
+            sed -i -E "s/^(Stable tag:[[:space:]]*).*/\\1${{ steps.vars.outputs.version }}/" "$README_FILE" || true
+          fi
+
+          if grep -q "KAIGEN_VERSION" "$PLUGIN_FILE"; then
+            sed -i -E "s/(define\\([\"']KAIGEN_VERSION[\"'],[[:space:]]*[\"']).*([\"'][[:space:]]*\\);)/\\1${{ steps.vars.outputs.version }}\\2/" "$PLUGIN_FILE" || true
+          fi
+
+      - name: Build zip
+        shell: bash
+        run: |
+          cd build
+          zip -r kaigen-connector.zip kaigen-connector
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release create "${{ steps.vars.outputs.tag }}" \
+            "build/kaigen-connector.zip#Kaigen Connector" \
+            --title "Kaigen Connector ${{ steps.vars.outputs.version }}" \
+            --notes "Automatic release for commit ${GITHUB_SHA}"

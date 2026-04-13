@@ -43,6 +43,14 @@ Kaigen Connector seamlessly integrates your WordPress site with the Kaigen platf
 8. Configure role permissions
 9. Test the connection
 
+== Updates ==
+
+This plugin can check for updates from the GitHub repository:
+
+* https://github.com/laurentvergnaud/kaigen-plugin
+
+To publish a dashboard-installable update, create a GitHub Release and upload a packaged ZIP asset named like `kaigen-connector.zip`.
+
 == Frequently Asked Questions ==
 
 = What is Kaigen? =
@@ -88,7 +96,6 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 = 1.0.0 =
 Initial release of Kaigen Connector.
-
 
 
 
