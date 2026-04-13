@@ -152,8 +152,9 @@ class Kaigen_API {
     /**
      * Test connection to Kaigen
      */
-    public function test_connection() {
-        $validation = $this->auth->validate_with_kaigen();
+    public function test_connection($api_key = null, $api_url = null) {
+        $has_override = !empty($api_key);
+        $validation = $this->auth->validate_with_kaigen($api_key, $api_url, !$has_override);
 
         if (!$validation['valid']) {
             return new WP_Error('connection_failed', $validation['error']);
@@ -205,6 +206,52 @@ class Kaigen_API {
     }
 
     /**
+     * Send batched sync events to Kaigen.
+     */
+    public function send_sync_events($project_id, $events, $mode = 'delta', $source = array()) {
+        if (empty($project_id)) {
+            return new WP_Error('no_project', __('No project ID available', 'kaigen-connector'));
+        }
+
+        if (!is_array($events) || empty($events)) {
+            return array(
+                'accepted' => 0,
+                'processed' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'errors' => array(),
+            );
+        }
+
+        $payload = array(
+            'mode' => $mode === 'full' ? 'full' : 'delta',
+            'source' => array_merge(array(
+                'wpUrl' => home_url(),
+                'pluginVersion' => KAIGEN_VERSION,
+                'sentAt' => gmdate('c'),
+                'requestId' => uniqid('kaigen-sync-', true),
+            ), is_array($source) ? $source : array()),
+            'events' => array_values($events),
+        );
+
+        return $this->request("api/wordpress/{$project_id}/sync-events", 'POST', $payload);
+    }
+
+    /**
+     * Forward one tracking event to Kaigen.
+     */
+    public function send_tracking_event($event) {
+        return $this->request('api/track', 'POST', $event);
+    }
+
+    /**
+     * Public logger for plugin activity.
+     */
+    public function log_activity($action, $status, $details = array()) {
+        $this->log_sync_activity($action, $status, $details);
+    }
+
+    /**
      * Log sync activity
      */
     private function log_sync_activity($action, $status, $details = array()) {
@@ -234,7 +281,4 @@ class Kaigen_API {
         return array_slice(array_reverse($logs), 0, $limit);
     }
 }
-
-
-
 

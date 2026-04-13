@@ -93,10 +93,24 @@ class Kaigen_REST_API
     /**
      * Check permission for API requests
      */
-    public function check_permission()
+    public function check_permission($request = null)
     {
         $auth = Kaigen_Auth::get_instance();
-        return $auth->verify_incoming_request();
+        $allowed = $auth->verify_incoming_request();
+
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            $route = '';
+            if ($request instanceof WP_REST_Request) {
+                $route = $request->get_route();
+            } elseif (is_object($request) && method_exists($request, 'get_route')) {
+                $route = $request->get_route();
+            } else {
+                $route = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+            }
+            error_log('[Kaigen connector][rest_permission] route=' . $route . ', allowed=' . ($allowed ? 'true' : 'false'));
+        }
+
+        return $allowed;
     }
 
     /**
@@ -128,39 +142,124 @@ class Kaigen_REST_API
         $content = Kaigen_Content::get_instance();
         $settings = get_option('kaigen_settings', array());
 
-        $post_type = $request->get_param('post_type');
         $per_page = intval($request->get_param('per_page') ?: 100);
+        $per_page = max(1, min($per_page, 100));
         $page = intval($request->get_param('page') ?: 1);
+        $page = max(1, $page);
 
         // Get enabled post types
         $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
 
-        // Filter by specific post type if requested
-        if ($post_type && in_array($post_type, $enabled_types)) {
-            $post_types = array($post_type);
-        } else {
+        // Filter by post types (CSV or array)
+        $requested_post_types = $this->parse_csv_or_array($request->get_param('post_type'));
+        $post_types = empty($requested_post_types)
+            ? $enabled_types
+            : array_values(array_intersect($requested_post_types, $enabled_types));
+        if (empty($post_types)) {
             $post_types = $enabled_types;
         }
+
+        // Filter by status (CSV or array)
+        $requested_statuses = array_map('strtolower', $this->parse_csv_or_array($request->get_param('post_status')));
+        $allowed_statuses = array('publish', 'draft', 'pending', 'private', 'future');
+        $post_statuses = empty($requested_statuses)
+            ? array('publish')
+            : array_values(array_intersect($requested_statuses, $allowed_statuses));
+        if (empty($post_statuses)) {
+            $post_statuses = array('publish');
+        }
+
+        // Sort configuration
+        $orderby = strtolower(strval($request->get_param('orderby') ?: 'modified'));
+        $allowed_orderby = array('modified', 'date', 'title', 'id', 'rand');
+        if (!in_array($orderby, $allowed_orderby, true)) {
+            $orderby = 'modified';
+        }
+        $wp_orderby = $orderby === 'id' ? 'ID' : $orderby;
+
+        $order = strtoupper(strval($request->get_param('order') ?: 'DESC'));
+        if (!in_array($order, array('ASC', 'DESC'), true)) {
+            $order = 'DESC';
+        }
+
+        $search = sanitize_text_field(strval($request->get_param('search') ?: ''));
+        $modified_after = sanitize_text_field(strval($request->get_param('modified_after') ?: ''));
+        $modified_before = sanitize_text_field(strval($request->get_param('modified_before') ?: ''));
+
+        // Optional field selection
+        $allowed_fields = array(
+            'id',
+            'title',
+            'content',
+            'excerpt',
+            'url',
+            'postType',
+            'status',
+            'author',
+            'publishedDate',
+            'modifiedDate',
+            'categories',
+            'tags',
+            'seo_title',
+            'seo_meta_description',
+            'seo_keyword',
+        );
+        $requested_fields = $this->parse_csv_or_array($request->get_param('fields'));
+        $requested_fields = array_values(array_intersect($requested_fields, $allowed_fields));
+        $has_field_filter = !empty($requested_fields);
+        $required_fields = array('id', 'modifiedDate');
+        $fields_to_keep = array_values(array_unique(array_merge($requested_fields, $required_fields)));
 
         // Query all post types together with global pagination
         $args = array(
             'post_type' => $post_types,
             'posts_per_page' => $per_page,
             'paged' => $page,
-            'post_status' => 'publish',
-            'orderby' => 'modified',
-            'order' => 'DESC'
+            'post_status' => $post_statuses,
+            'orderby' => $wp_orderby,
+            'order' => $order
         );
+
+        if (!empty($search)) {
+            $args['s'] = $search;
+        }
+
+        $date_query = array();
+        if (!empty($modified_after)) {
+            $after_ts = strtotime($modified_after);
+            if ($after_ts !== false) {
+                $date_query[] = array(
+                    'after' => gmdate('c', $after_ts),
+                    'column' => 'post_modified_gmt',
+                    'inclusive' => true,
+                );
+            }
+        }
+        if (!empty($modified_before)) {
+            $before_ts = strtotime($modified_before);
+            if ($before_ts !== false) {
+                $date_query[] = array(
+                    'before' => gmdate('c', $before_ts),
+                    'column' => 'post_modified_gmt',
+                    'inclusive' => true,
+                );
+            }
+        }
+        if (!empty($date_query)) {
+            $args['date_query'] = $date_query;
+        }
 
         $query = new WP_Query($args);
         $posts = array();
+        $seo_plugin = $content->detect_seo_plugin();
 
         if ($query->have_posts()) {
             while ($query->have_posts()) {
                 $query->the_post();
                 $post_id = get_the_ID();
+                $seo_summary = $this->get_post_seo_summary($post_id, $seo_plugin);
 
-                $posts[] = array(
+                $post_item = array(
                     'id' => $post_id,
                     'title' => get_the_title(),
                     'content' => get_the_content(),
@@ -172,8 +271,17 @@ class Kaigen_REST_API
                     'publishedDate' => get_the_date('c'),
                     'modifiedDate' => get_the_modified_date('c'),
                     'categories' => wp_get_post_categories($post_id, array('fields' => 'names')),
-                    'tags' => wp_get_post_tags($post_id, array('fields' => 'names')) ?: array()
+                    'tags' => wp_get_post_tags($post_id, array('fields' => 'names')) ?: array(),
+                    'seo_title' => $seo_summary['seo_title'],
+                    'seo_meta_description' => $seo_summary['seo_meta_description'],
+                    'seo_keyword' => $seo_summary['seo_keyword'],
                 );
+
+                if ($has_field_filter) {
+                    $post_item = array_intersect_key($post_item, array_flip($fields_to_keep));
+                }
+
+                $posts[] = $post_item;
             }
             wp_reset_postdata();
         }
@@ -189,6 +297,68 @@ class Kaigen_REST_API
             'page' => $page,
             'per_page' => $per_page
         ));
+    }
+
+    private function parse_csv_or_array($value)
+    {
+        if (is_array($value)) {
+            $items = $value;
+        } elseif (is_string($value)) {
+            $items = explode(',', $value);
+        } else {
+            return array();
+        }
+
+        $normalized = array();
+        foreach ($items as $item) {
+            $item = trim(strval($item));
+            if ($item === '') {
+                continue;
+            }
+            $normalized[] = $item;
+        }
+
+        return array_values(array_unique($normalized));
+    }
+
+    private function get_post_seo_summary($post_id, $seo_plugin)
+    {
+        $seo_keys = $this->get_seo_meta_keys_for_plugin($seo_plugin);
+
+        $seo_title = get_post_meta($post_id, $seo_keys['title'], true);
+        $seo_description = get_post_meta($post_id, $seo_keys['description'], true);
+        $seo_keyword = get_post_meta($post_id, $seo_keys['focus_keyword'], true);
+
+        return array(
+            'seo_title' => $seo_title !== '' ? strval($seo_title) : null,
+            'seo_meta_description' => $seo_description !== '' ? strval($seo_description) : null,
+            'seo_keyword' => $seo_keyword !== '' ? strval($seo_keyword) : null,
+        );
+    }
+
+    private function get_seo_meta_keys_for_plugin($seo_plugin)
+    {
+        if ($seo_plugin === 'rankmath') {
+            return array(
+                'title' => 'rank_math_title',
+                'description' => 'rank_math_description',
+                'focus_keyword' => 'rank_math_focus_keyword',
+            );
+        }
+
+        if ($seo_plugin === 'seopress') {
+            return array(
+                'title' => '_seopress_titles_title',
+                'description' => '_seopress_titles_desc',
+                'focus_keyword' => '_seopress_analysis_target_kw',
+            );
+        }
+
+        return array(
+            'title' => '_yoast_wpseo_title',
+            'description' => '_yoast_wpseo_metadesc',
+            'focus_keyword' => '_yoast_wpseo_focuskw',
+        );
     }
 
     /**

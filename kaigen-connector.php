@@ -2,9 +2,9 @@
 
 /**
  * Plugin Name: Kaigen Connector
- * Plugin URI: https://kaigen.app
+ * Plugin URI: https://app.kaigen.net
  * Description: Connect your WordPress site to Kaigen for AI-powered content generation and management
- * Version: 1.0.0
+ * Version: 1.1.0
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Kaigen
  * Author URI: https://kaigen.app
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.0.0');
+define('KAIGEN_VERSION', '1.1.0');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -70,10 +70,13 @@ class Kaigen_Connector
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-auth.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-api.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-content.php';
+        require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-structured-data.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-update.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-admin.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-rest-api.php';
+        require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-tracker.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-editor-button.php';
+        require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-sync-events.php';
     }
 
     /**
@@ -105,6 +108,9 @@ class Kaigen_Connector
                 'auth_method' => 'api_key',
                 'api_url' => 'https://kaigen.app',
                 'enabled_post_types' => array('post', 'page'),
+                'tracking_enabled' => 1,
+                'structured_data_injection_enabled' => 1,
+                'project_id' => '',
             ));
         }
     }
@@ -129,6 +135,7 @@ class Kaigen_Connector
         // Initialize components
         Kaigen_Admin::get_instance();
         Kaigen_REST_API::get_instance();
+        Kaigen_Tracker::get_instance();
         Kaigen_Editor_Button::get_instance();
         Kaigen_Sync_Events::get_instance();
         Kaigen_Structured_Data::get_instance();

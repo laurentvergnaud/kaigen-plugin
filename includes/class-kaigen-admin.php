@@ -67,6 +67,42 @@ class Kaigen_Admin
         // Determine which tab submitted the form
         $tab = isset($input['_tab']) ? $input['_tab'] : '';
 
+        // Programmatic updates (AJAX/helpers) may call update_option() without _tab.
+        // In that case, apply provided keys directly to avoid silently discarding changes.
+        if ($tab === '') {
+            if (isset($input['auth_method'])) {
+                $sanitized['auth_method'] = in_array($input['auth_method'], array('api_key', 'app_password'))
+                    ? $input['auth_method']
+                    : (isset($existing['auth_method']) ? $existing['auth_method'] : 'api_key');
+            }
+
+            if (isset($input['api_url']) && is_string($input['api_url']) && $input['api_url'] !== '') {
+                $sanitized_url = esc_url_raw($input['api_url']);
+                if (!empty($sanitized_url)) {
+                    $sanitized['api_url'] = $sanitized_url;
+                }
+            }
+
+            if (isset($input['api_key']) && is_string($input['api_key']) && $input['api_key'] !== '') {
+                // Allow pre-encrypted values from trusted server-side flows.
+                $sanitized['api_key'] = $input['api_key'];
+            }
+
+            if (isset($input['project_id'])) {
+                $sanitized['project_id'] = sanitize_text_field((string) $input['project_id']);
+            }
+
+            if (isset($input['tracking_enabled'])) {
+                $sanitized['tracking_enabled'] = (int) $input['tracking_enabled'] === 1 ? 1 : 0;
+            }
+
+            if (isset($input['structured_data_injection_enabled'])) {
+                $sanitized['structured_data_injection_enabled'] = (int) $input['structured_data_injection_enabled'] === 1 ? 1 : 0;
+            }
+
+            return $sanitized;
+        }
+
         // Authentication Tab
         if ($tab === 'authentication') {
             // Auth method
@@ -116,10 +152,12 @@ class Kaigen_Admin
             // API key - encrypt if new, preserve if placeholder or empty
             $api_key_placeholder = '••••••••••••••••';
             if (isset($input['api_key']) && !empty($input['api_key']) && $input['api_key'] !== $api_key_placeholder) {
+                $normalized_api_key = preg_replace('/\s+/', '', trim((string) $input['api_key']));
                 // Only encrypt if it's a new key (starts with kaigen_)
-                if (strpos($input['api_key'], 'kaigen_') === 0) {
+                if (strpos($normalized_api_key, 'kaigen_') === 0) {
                     $auth = Kaigen_Auth::get_instance();
-                    $sanitized['api_key'] = $auth->encrypt_value($input['api_key']);
+                    $sanitized['api_key'] = $auth->encrypt_value($normalized_api_key);
+                    $sanitized['project_id'] = '';
                 }
             }
             // If empty or placeholder, we keep $sanitized['api_key'] which is already $existing['api_key']
@@ -135,6 +173,8 @@ class Kaigen_Admin
                 $auth = Kaigen_Auth::get_instance();
                 $sanitized['wp_app_password'] = $auth->encrypt_value($input['wp_app_password']);
             }
+
+            $sanitized['tracking_enabled'] = isset($input['tracking_enabled']) ? 1 : 0;
         }
 
         // Post Types Tab
@@ -145,6 +185,8 @@ class Kaigen_Admin
                 // If not set but we are on this tab, it means all were unchecked
                 $sanitized['enabled_post_types'] = array();
             }
+
+            $sanitized['structured_data_injection_enabled'] = isset($input['structured_data_injection_enabled']) ? 1 : 0;
         }
 
         // Permissions Tab
@@ -208,11 +250,11 @@ class Kaigen_Admin
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('kaigen_admin'),
             'strings' => array(
-                'testing' => __('Testing connection...', 'kaigen-connector'),
+                'testing' => __('Saving settings and activating Kaigen...', 'kaigen-connector'),
                 'syncing' => __('Syncing content...', 'kaigen-connector'),
-                'success' => __('Success!', 'kaigen-connector'),
+                'success' => __('Saved and activated!', 'kaigen-connector'),
                 'error' => __('Error:', 'kaigen-connector'),
-                'testConnection' => __('Test Connection', 'kaigen-connector'),
+                'testConnection' => __('Save and activate Kaigen', 'kaigen-connector'),
                 'syncContentNow' => __('Sync Content Now', 'kaigen-connector')
             )
         ));
@@ -284,6 +326,8 @@ class Kaigen_Admin
     {
         $auth_method = isset($settings['auth_method']) ? $settings['auth_method'] : 'api_key';
         $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://kaigen.app';
+        $tracking_enabled = !isset($settings['tracking_enabled']) || (int) $settings['tracking_enabled'] === 1;
+        $project_id = isset($settings['project_id']) ? $settings['project_id'] : '';
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="authentication">
         <table class="form-table">
@@ -344,12 +388,34 @@ class Kaigen_Admin
             </tr>
 
             <tr>
-                <th scope="row"><?php _e('Connection Status', 'kaigen-connector'); ?></th>
+                <th scope="row"><?php _e('Activation', 'kaigen-connector'); ?></th>
                 <td>
                     <button type="button" id="kaigen-test-connection" class="button">
-                        <?php _e('Test Connection', 'kaigen-connector'); ?>
+                        <?php _e('Save and activate Kaigen', 'kaigen-connector'); ?>
                     </button>
                     <span id="kaigen-connection-status"></span>
+                    <p class="description">
+                        <?php _e('This button saves the API URL/key currently entered and immediately validates activation.', 'kaigen-connector'); ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php _e('Linked Project ID', 'kaigen-connector'); ?></th>
+                <td>
+                    <code><?php echo esc_html($project_id ? $project_id : __('Not linked yet', 'kaigen-connector')); ?></code>
+                    <p class="description"><?php _e('Automatically saved after a successful activation.', 'kaigen-connector'); ?></p>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row"><?php _e('Site Tracking', 'kaigen-connector'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="kaigen_settings[tracking_enabled]" value="1" <?php checked($tracking_enabled); ?>>
+                        <?php _e('Enable first-party pageview tracking', 'kaigen-connector'); ?>
+                    </label>
+                    <p class="description"><?php _e('When enabled, the plugin sends anonymous pageview events to Kaigen for journey analysis.', 'kaigen-connector'); ?></p>
                 </td>
             </tr>
         </table>
@@ -362,6 +428,7 @@ class Kaigen_Admin
     private function render_post_types_tab($settings, $content)
     {
         $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $structured_data_injection_enabled = !isset($settings['structured_data_injection_enabled']) || (int) $settings['structured_data_injection_enabled'] === 1;
         $post_types = $content->get_custom_post_types();
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="post-types">
@@ -400,6 +467,20 @@ class Kaigen_Admin
         <p class="description">
             <?php _e('Only selected post types will be visible and editable through Kaigen.', 'kaigen-connector'); ?>
         </p>
+
+        <h3><?php _e('Structured Data', 'kaigen-connector'); ?></h3>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Kaigen JSON-LD', 'kaigen-connector'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="kaigen_settings[structured_data_injection_enabled]" value="1" <?php checked($structured_data_injection_enabled); ?>>
+                        <?php _e('Inject Kaigen structured data on published pages', 'kaigen-connector'); ?>
+                    </label>
+                    <p class="description"><?php _e('When enabled, Kaigen injects valid JSON-LD stored on each post without adding scripts to the editable content.', 'kaigen-connector'); ?></p>
+                </td>
+            </tr>
+        </table>
     <?php
     }
 
@@ -495,14 +576,82 @@ class Kaigen_Admin
             wp_send_json_error(array('message' => __('Insufficient permissions', 'kaigen-connector')));
         }
 
+        $submitted_api_key = isset($_POST['api_key']) ? sanitize_text_field(wp_unslash($_POST['api_key'])) : '';
+        $submitted_api_url = isset($_POST['api_url']) ? sanitize_text_field(wp_unslash($_POST['api_url'])) : '';
+        $api_key_placeholder = '••••••••••••••••';
+
+        if (is_string($submitted_api_key)) {
+            $submitted_api_key = preg_replace('/\s+/', '', trim($submitted_api_key));
+        }
+
+        $api_key_for_test = null;
+        if (!empty($submitted_api_key) && $submitted_api_key !== $api_key_placeholder) {
+            $api_key_for_test = $submitted_api_key;
+        }
+
+        $api_key_preview = '';
+        if (is_string($api_key_for_test) && strlen($api_key_for_test) > 0) {
+            $api_key_preview = substr($api_key_for_test, 0, 12);
+            if (strlen($api_key_for_test) > 16) {
+                $api_key_preview .= '...' . substr($api_key_for_test, -4);
+            }
+        }
+
+        error_log('[Kaigen connector][ajax_test_connection] Incoming activation request: has_api_key=' . (!empty($api_key_for_test) ? 'yes' : 'no') . ', api_key_len=' . strval(is_string($api_key_for_test) ? strlen($api_key_for_test) : 0) . ', api_key_preview=' . $api_key_preview . ', api_url=' . strval($submitted_api_url));
+
+        $api_url_for_test = null;
+        if (!empty($submitted_api_url)) {
+            $url_candidate = $submitted_api_url;
+            if (strpos($url_candidate, 'http://') !== 0 && strpos($url_candidate, 'https://') !== 0) {
+                if (strpos($url_candidate, 'localhost') !== false || strpos($url_candidate, '127.0.0.1') !== false) {
+                    $url_candidate = 'http://' . $url_candidate;
+                } else {
+                    $url_candidate = 'https://' . $url_candidate;
+                }
+            }
+            $api_url_for_test = esc_url_raw($url_candidate);
+        }
+
         $api = Kaigen_API::get_instance();
-        $result = $api->test_connection();
+        $result = $api->test_connection($api_key_for_test, $api_url_for_test);
+        error_log('[Kaigen connector][ajax_test_connection] Result type=' . (is_wp_error($result) ? 'wp_error' : 'success'));
 
         if (is_wp_error($result)) {
+            error_log('[Kaigen connector][ajax_test_connection] Error=' . $result->get_error_message());
             wp_send_json_error(array('message' => $result->get_error_message()));
         }
 
+        if (!empty($result['project_id'])) {
+            $settings = get_option('kaigen_settings', array());
+            $auth_instance = Kaigen_Auth::get_instance();
+            $stored_before = $auth_instance->get_api_key();
+            if (!empty($api_key_for_test)) {
+                $settings['api_key'] = $auth_instance->encrypt_value($api_key_for_test);
+                $settings['auth_method'] = 'api_key';
+            }
+            if (!empty($api_url_for_test)) {
+                $settings['api_url'] = $api_url_for_test;
+            }
+            $settings['project_id'] = sanitize_text_field($result['project_id']);
+            $updated = update_option('kaigen_settings', $settings);
+            $stored_after = $auth_instance->get_api_key();
+            error_log('[Kaigen connector][ajax_test_connection] Saved project_id=' . strval($result['project_id']) . ', update_option=' . ($updated ? 'true' : 'false') . ', key_before=' . $this->mask_api_key_for_logs($stored_before) . ', key_submitted=' . $this->mask_api_key_for_logs($api_key_for_test) . ', key_after=' . $this->mask_api_key_for_logs($stored_after));
+        }
+
+        error_log('[Kaigen connector][ajax_test_connection] Success payload=' . wp_json_encode($result));
         wp_send_json_success($result);
+    }
+
+    private function mask_api_key_for_logs($value)
+    {
+        if (!is_string($value) || $value === '') {
+            return 'none';
+        }
+        $len = strlen($value);
+        if ($len <= 8) {
+            return str_repeat('*', $len);
+        }
+        return substr($value, 0, 6) . '...' . substr($value, -4);
     }
 
     /**

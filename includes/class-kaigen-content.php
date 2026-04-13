@@ -365,6 +365,18 @@ class Kaigen_Content
         $seo = $this->get_post_seo_data($post_id);
         $taxonomies = $this->get_post_taxonomies_v2($post_id, $post->post_type);
         $featured_media_id = get_post_thumbnail_id($post_id);
+        $extensions = array(
+            'editor_type' => $this->get_editor_type($post->post_type),
+            'modified_gmt' => get_post_modified_time('c', true, $post),
+        );
+        $structured_data_json = get_post_meta($post_id, Kaigen_Structured_Data::META_JSON, true);
+        if (is_string($structured_data_json) && trim($structured_data_json) !== '') {
+            $structured_data_enabled = get_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED, true);
+            $extensions['kaigen'] = array(
+                'structured_data_json' => $structured_data_json,
+                'structured_data_enabled' => $structured_data_enabled === '' ? true : intval($structured_data_enabled) === 1,
+            );
+        }
 
         return array(
             'schema_version' => 2,
@@ -396,9 +408,7 @@ class Kaigen_Content
                 'featured_media_id' => $featured_media_id ? intval($featured_media_id) : null,
                 'featured_media_url' => $featured_media_id ? wp_get_attachment_url($featured_media_id) : null,
             ),
-            'extensions' => array(
-                'editor_type' => $this->get_editor_type($post->post_type),
-            ),
+            'extensions' => $extensions,
         );
     }
 
