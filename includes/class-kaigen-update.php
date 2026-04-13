@@ -81,6 +81,60 @@ class Kaigen_Update {
     }
 
     /**
+     * Handle creation request from Kaigen (canonical v2 document)
+     */
+    public function handle_create_request($data) {
+        if (!isset($data['schema_version']) || intval($data['schema_version']) !== 2) {
+            return new WP_Error('invalid_schema_version', __('schema_version must be 2', 'kaigen-connector'), array('status' => 400));
+        }
+
+        if (!isset($data['post']) || !is_array($data['post'])) {
+            return new WP_Error('invalid_document', __('post object is required', 'kaigen-connector'), array('status' => 400));
+        }
+
+        if (!isset($data['post']['post_type']) || !is_string($data['post']['post_type']) || $data['post']['post_type'] === '') {
+            $data['post']['post_type'] = 'post';
+        }
+
+        if (!isset($data['post']['status']) || !is_string($data['post']['status']) || $data['post']['status'] === '') {
+            $data['post']['status'] = 'draft';
+        }
+
+        if (!isset($data['post']['id'])) {
+            $data['post']['id'] = 0;
+        }
+
+        $validation_error = $this->validate_merged_document($data);
+        if (is_wp_error($validation_error)) {
+            return $validation_error;
+        }
+
+        $created_post_id = $this->persist_document(0, $data, true);
+        if (is_wp_error($created_post_id)) {
+            return $created_post_id;
+        }
+
+        $post_id = intval($created_post_id);
+        if ($post_id <= 0) {
+            return new WP_Error('post_create_failed', __('Failed to create post', 'kaigen-connector'), array('status' => 500));
+        }
+
+        $content = Kaigen_Content::get_instance();
+        $project_id = isset($data['project_id']) ? strval($data['project_id']) : '';
+        $platform_id = isset($data['platform_id']) ? strval($data['platform_id']) : null;
+        $site_url = isset($data['site_url']) ? strval($data['site_url']) : '';
+
+        $created = $content->build_wordpress_document_v2($post_id, $project_id, $platform_id, $site_url);
+        if (!$created) {
+            return new WP_Error('document_build_failed', __('Unable to build created document', 'kaigen-connector'), array('status' => 500));
+        }
+
+        $this->log_update($post_id, array('create', 'post', 'seo', 'taxonomies', 'custom_fields', 'media'));
+
+        return $created;
+    }
+
+    /**
      * Validate user capabilities
      */
     public function validate_capabilities($user_id, $post_type) {
@@ -266,37 +320,71 @@ class Kaigen_Update {
     /**
      * Persist merged v2 document back to WordPress.
      */
-    private function persist_document($post_id, $document) {
+    private function persist_document($post_id, $document, $allow_create = false) {
         $post_data = isset($document['post']) && is_array($document['post']) ? $document['post'] : array();
+        $post_id = intval($post_id);
 
-        $update_data = array('ID' => $post_id);
+        if ($allow_create && $post_id <= 0) {
+            $insert_data = array(
+                'post_type' => isset($post_data['post_type']) ? sanitize_key($post_data['post_type']) : 'post',
+                'post_status' => isset($post_data['status']) ? $post_data['status'] : 'draft',
+                'post_title' => isset($post_data['title']) ? sanitize_text_field($post_data['title']) : '',
+                // Keep raw block comments (<!-- wp:* -->) to preserve Gutenberg structure.
+                'post_content' => isset($post_data['content']) ? strval($post_data['content']) : '',
+            );
 
-        if (isset($post_data['title'])) {
-            $update_data['post_title'] = sanitize_text_field($post_data['title']);
-        }
-        if (isset($post_data['content'])) {
-            $update_data['post_content'] = wp_kses_post($post_data['content']);
-        }
-        if (isset($post_data['excerpt'])) {
-            $update_data['post_excerpt'] = sanitize_textarea_field($post_data['excerpt']);
-        }
-        if (isset($post_data['status'])) {
-            $update_data['post_status'] = $post_data['status'];
-        }
-        if (isset($post_data['slug'])) {
-            $update_data['post_name'] = sanitize_title($post_data['slug']);
-        }
-        if (isset($post_data['date']) && !empty($post_data['date'])) {
-            $update_data['post_date'] = gmdate('Y-m-d H:i:s', strtotime($post_data['date']));
-            $update_data['post_date_gmt'] = gmdate('Y-m-d H:i:s', strtotime($post_data['date']));
-        }
-        if (isset($post_data['author']) && is_array($post_data['author']) && isset($post_data['author']['id'])) {
-            $update_data['post_author'] = intval($post_data['author']['id']);
-        }
+            if (isset($post_data['excerpt'])) {
+                $insert_data['post_excerpt'] = sanitize_textarea_field($post_data['excerpt']);
+            }
+            if (isset($post_data['slug'])) {
+                $insert_data['post_name'] = sanitize_title($post_data['slug']);
+            }
+            if (isset($post_data['date']) && !empty($post_data['date'])) {
+                $insert_data['post_date'] = gmdate('Y-m-d H:i:s', strtotime($post_data['date']));
+                $insert_data['post_date_gmt'] = gmdate('Y-m-d H:i:s', strtotime($post_data['date']));
+            }
+            if (isset($post_data['author']) && is_array($post_data['author']) && isset($post_data['author']['id'])) {
+                $insert_data['post_author'] = intval($post_data['author']['id']);
+            }
 
-        $result = wp_update_post($update_data, true);
-        if (is_wp_error($result)) {
-            return $result;
+            $inserted = wp_insert_post($insert_data, true);
+            if (is_wp_error($inserted)) {
+                error_log('[Kaigen connector] Failed to create post from v2 document: post_id=0, content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $inserted->get_error_message());
+                return $inserted;
+            }
+            $post_id = intval($inserted);
+        } else {
+            $update_data = array('ID' => $post_id);
+
+            if (isset($post_data['title'])) {
+                $update_data['post_title'] = sanitize_text_field($post_data['title']);
+            }
+            if (isset($post_data['content'])) {
+                // Keep raw block comments (<!-- wp:* -->) to preserve Gutenberg structure.
+                $update_data['post_content'] = strval($post_data['content']);
+            }
+            if (isset($post_data['excerpt'])) {
+                $update_data['post_excerpt'] = sanitize_textarea_field($post_data['excerpt']);
+            }
+            if (isset($post_data['status'])) {
+                $update_data['post_status'] = $post_data['status'];
+            }
+            if (isset($post_data['slug'])) {
+                $update_data['post_name'] = sanitize_title($post_data['slug']);
+            }
+            if (isset($post_data['date']) && !empty($post_data['date'])) {
+                $update_data['post_date'] = gmdate('Y-m-d H:i:s', strtotime($post_data['date']));
+                $update_data['post_date_gmt'] = gmdate('Y-m-d H:i:s', strtotime($post_data['date']));
+            }
+            if (isset($post_data['author']) && is_array($post_data['author']) && isset($post_data['author']['id'])) {
+                $update_data['post_author'] = intval($post_data['author']['id']);
+            }
+
+            $result = wp_update_post($update_data, true);
+            if (is_wp_error($result)) {
+                error_log('[Kaigen connector] Failed to update post from v2 document: post_id=' . $post_id . ', content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $result->get_error_message());
+                return $result;
+            }
         }
 
         if (isset($document['custom_fields']) && is_array($document['custom_fields'])) {
@@ -312,6 +400,10 @@ class Kaigen_Update {
             $this->update_seo_fields_v2($post_id, $document['seo']);
         }
 
+        if (isset($document['extensions']) && is_array($document['extensions'])) {
+            $this->update_structured_data_meta($post_id, $document['extensions']);
+        }
+
         if (isset($document['taxonomies']) && is_array($document['taxonomies'])) {
             $this->update_taxonomies($post_id, $document['taxonomies']);
         }
@@ -320,7 +412,7 @@ class Kaigen_Update {
             $this->update_media($post_id, $document['media']);
         }
 
-        return true;
+        return $post_id;
     }
 
     /**
@@ -399,6 +491,40 @@ class Kaigen_Update {
                     update_post_meta($post_id, $meta_key, $this->sanitize_meta_value($meta_value));
                 }
             }
+        }
+    }
+
+    /**
+     * Persist Kaigen-owned structured data separately from post_content.
+     */
+    private function update_structured_data_meta($post_id, $extensions) {
+        if (!isset($extensions['kaigen']) || !is_array($extensions['kaigen'])) {
+            return;
+        }
+
+        $kaigen = $extensions['kaigen'];
+
+        if (array_key_exists('structured_data_json', $kaigen)) {
+            $structured_data_json = $kaigen['structured_data_json'];
+
+            if ($structured_data_json === null || trim(strval($structured_data_json)) === '') {
+                delete_post_meta($post_id, Kaigen_Structured_Data::META_JSON);
+                delete_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED);
+            } else {
+                update_post_meta($post_id, Kaigen_Structured_Data::META_JSON, wp_slash(strval($structured_data_json)));
+
+                if (!metadata_exists('post', $post_id, Kaigen_Structured_Data::META_ENABLED)) {
+                    update_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED, '1');
+                }
+            }
+        }
+
+        if (array_key_exists('structured_data_enabled', $kaigen)) {
+            update_post_meta(
+                $post_id,
+                Kaigen_Structured_Data::META_ENABLED,
+                intval($kaigen['structured_data_enabled']) === 1 ? '1' : '0'
+            );
         }
     }
 
