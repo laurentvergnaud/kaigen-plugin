@@ -329,7 +329,8 @@ class Kaigen_Update {
                 'post_type' => isset($post_data['post_type']) ? sanitize_key($post_data['post_type']) : 'post',
                 'post_status' => isset($post_data['status']) ? $post_data['status'] : 'draft',
                 'post_title' => isset($post_data['title']) ? sanitize_text_field($post_data['title']) : '',
-                'post_content' => isset($post_data['content']) ? wp_kses_post($post_data['content']) : '',
+                // Keep raw block comments (<!-- wp:* -->) to preserve Gutenberg structure.
+                'post_content' => isset($post_data['content']) ? strval($post_data['content']) : '',
             );
 
             if (isset($post_data['excerpt'])) {
@@ -348,6 +349,7 @@ class Kaigen_Update {
 
             $inserted = wp_insert_post($insert_data, true);
             if (is_wp_error($inserted)) {
+                error_log('[Kaigen connector] Failed to create post from v2 document: post_id=0, content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $inserted->get_error_message());
                 return $inserted;
             }
             $post_id = intval($inserted);
@@ -358,7 +360,8 @@ class Kaigen_Update {
                 $update_data['post_title'] = sanitize_text_field($post_data['title']);
             }
             if (isset($post_data['content'])) {
-                $update_data['post_content'] = wp_kses_post($post_data['content']);
+                // Keep raw block comments (<!-- wp:* -->) to preserve Gutenberg structure.
+                $update_data['post_content'] = strval($post_data['content']);
             }
             if (isset($post_data['excerpt'])) {
                 $update_data['post_excerpt'] = sanitize_textarea_field($post_data['excerpt']);
@@ -379,6 +382,7 @@ class Kaigen_Update {
 
             $result = wp_update_post($update_data, true);
             if (is_wp_error($result)) {
+                error_log('[Kaigen connector] Failed to update post from v2 document: post_id=' . $post_id . ', content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $result->get_error_message());
                 return $result;
             }
         }
@@ -394,6 +398,10 @@ class Kaigen_Update {
 
         if (isset($document['seo']) && is_array($document['seo'])) {
             $this->update_seo_fields_v2($post_id, $document['seo']);
+        }
+
+        if (isset($document['extensions']) && is_array($document['extensions'])) {
+            $this->update_structured_data_meta($post_id, $document['extensions']);
         }
 
         if (isset($document['taxonomies']) && is_array($document['taxonomies'])) {
@@ -483,6 +491,40 @@ class Kaigen_Update {
                     update_post_meta($post_id, $meta_key, $this->sanitize_meta_value($meta_value));
                 }
             }
+        }
+    }
+
+    /**
+     * Persist Kaigen-owned structured data separately from post_content.
+     */
+    private function update_structured_data_meta($post_id, $extensions) {
+        if (!isset($extensions['kaigen']) || !is_array($extensions['kaigen'])) {
+            return;
+        }
+
+        $kaigen = $extensions['kaigen'];
+
+        if (array_key_exists('structured_data_json', $kaigen)) {
+            $structured_data_json = $kaigen['structured_data_json'];
+
+            if ($structured_data_json === null || trim(strval($structured_data_json)) === '') {
+                delete_post_meta($post_id, Kaigen_Structured_Data::META_JSON);
+                delete_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED);
+            } else {
+                update_post_meta($post_id, Kaigen_Structured_Data::META_JSON, wp_slash(strval($structured_data_json)));
+
+                if (!metadata_exists('post', $post_id, Kaigen_Structured_Data::META_ENABLED)) {
+                    update_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED, '1');
+                }
+            }
+        }
+
+        if (array_key_exists('structured_data_enabled', $kaigen)) {
+            update_post_meta(
+                $post_id,
+                Kaigen_Structured_Data::META_ENABLED,
+                intval($kaigen['structured_data_enabled']) === 1 ? '1' : '0'
+            );
         }
     }
 

@@ -42,7 +42,9 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'kaigen_test_connection',
-                nonce: kaigenAdmin.nonce
+                nonce: kaigenAdmin.nonce,
+                api_key: String($('input[name="kaigen_settings[api_key]"]').val() || '').replace(/\s+/g, '').trim(),
+                api_url: $('input[name="kaigen_settings[api_url]"]').val() || ''
             },
             success: function(response) {
                 if (response.success) {
@@ -53,7 +55,7 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function() {
-                $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' Connection failed');
+                $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' Activation failed');
             },
             complete: function() {
                 $button.prop('disabled', false).text(kaigenAdmin.strings.testConnection);
