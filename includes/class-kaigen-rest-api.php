@@ -537,6 +537,69 @@ class Kaigen_REST_API
         );
     }
 
+    private function optimize_downloaded_media_asset($tmp_file, $derived_filename)
+    {
+        $editor = wp_get_image_editor($tmp_file);
+        if (is_wp_error($editor)) {
+            return new WP_Error(
+                'media_optimize_failed',
+                sprintf(__('Failed to open downloaded media for optimization: %s', 'kaigen-connector'), $editor->get_error_message()),
+                array('status' => 500)
+            );
+        }
+
+        if (method_exists($editor, 'set_quality')) {
+            $editor->set_quality(85);
+        }
+
+        $size = $editor->get_size();
+        if (is_array($size) && !empty($size['width']) && intval($size['width']) > 2400) {
+            $resized = $editor->resize(2400, null, false);
+            if (is_wp_error($resized)) {
+                return new WP_Error(
+                    'media_optimize_failed',
+                    sprintf(__('Failed to resize downloaded media before import: %s', 'kaigen-connector'), $resized->get_error_message()),
+                    array('status' => 500)
+                );
+            }
+        }
+
+        $pathinfo = pathinfo($derived_filename);
+        $basename = isset($pathinfo['filename']) && is_string($pathinfo['filename']) && $pathinfo['filename'] !== ''
+            ? $pathinfo['filename']
+            : 'kaigen-media-' . time();
+        $optimized_filename = sanitize_file_name($basename . '.webp');
+        $optimized_path = trailingslashit(dirname($tmp_file)) . wp_unique_filename(dirname($tmp_file), $optimized_filename);
+
+        $saved = $editor->save($optimized_path, 'image/webp');
+        if (is_wp_error($saved)) {
+            return new WP_Error(
+                'media_optimize_failed',
+                sprintf(__('Failed to encode downloaded media to WebP before import: %s', 'kaigen-connector'), $saved->get_error_message()),
+                array('status' => 500)
+            );
+        }
+
+        if (!is_array($saved) || empty($saved['path']) || !file_exists($saved['path'])) {
+            return new WP_Error(
+                'media_optimize_failed',
+                __('Image optimization completed without producing a valid file', 'kaigen-connector'),
+                array('status' => 500)
+            );
+        }
+
+        if ($saved['path'] !== $tmp_file && file_exists($tmp_file)) {
+            @unlink($tmp_file);
+        }
+
+        return array(
+            'tmp_name' => $saved['path'],
+            'filename' => isset($saved['file']) && is_string($saved['file']) && $saved['file'] !== ''
+                ? sanitize_file_name($saved['file'])
+                : $optimized_filename,
+        );
+    }
+
     private function import_remote_media_asset($source_url, $filename = '', $alt = '', $title = '')
     {
         $existing_attachment_id = $this->find_existing_imported_media($source_url);
@@ -578,14 +641,20 @@ class Kaigen_REST_API
             $derived_filename = 'kaigen-media-' . time() . '.jpg';
         }
 
+        $optimized_file = $this->optimize_downloaded_media_asset($tmp_file, $derived_filename);
+        if (is_wp_error($optimized_file)) {
+            @unlink($tmp_file);
+            return $optimized_file;
+        }
+
         $file_array = array(
-            'name' => sanitize_file_name($derived_filename),
-            'tmp_name' => $tmp_file,
+            'name' => $optimized_file['filename'],
+            'tmp_name' => $optimized_file['tmp_name'],
         );
 
         $attachment_id = media_handle_sideload($file_array, 0, $title !== '' ? $title : null);
         if (is_wp_error($attachment_id)) {
-            @unlink($tmp_file);
+            @unlink($file_array['tmp_name']);
             return new WP_Error(
                 'media_import_failed',
                 sprintf(__('Failed to import remote media: %s', 'kaigen-connector'), $attachment_id->get_error_message()),
