@@ -82,6 +82,13 @@ class Kaigen_REST_API
             )
         ));
 
+        // Import a remote media asset into the WordPress media library
+        register_rest_route($this->namespace, '/media/import', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'import_media'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+
         // Get internal linking candidates
         register_rest_route($this->namespace, '/links', array(
             'methods' => 'GET',
@@ -460,6 +467,146 @@ class Kaigen_REST_API
         }
 
         return rest_ensure_response($result);
+    }
+
+    /**
+     * Import a remote image into the WordPress media library.
+     */
+    public function import_media($request)
+    {
+        $data = $request->get_json_params();
+        if (!is_array($data)) {
+            return new WP_Error('invalid_payload', __('Invalid JSON payload', 'kaigen-connector'), array('status' => 400));
+        }
+
+        $source_url = isset($data['source_url']) ? esc_url_raw($data['source_url']) : '';
+        if ($source_url === '' || !wp_http_validate_url($source_url)) {
+            return new WP_Error('invalid_source_url', __('source_url must be a valid absolute URL', 'kaigen-connector'), array('status' => 400));
+        }
+
+        $filename = isset($data['filename']) ? sanitize_file_name(wp_unslash($data['filename'])) : '';
+        $alt = isset($data['alt']) ? sanitize_text_field(wp_unslash($data['alt'])) : '';
+        $title = isset($data['title']) ? sanitize_text_field(wp_unslash($data['title'])) : '';
+
+        $result = $this->import_remote_media_asset($source_url, $filename, $alt, $title);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return rest_ensure_response($result);
+    }
+
+    private function find_existing_imported_media($source_url)
+    {
+        $existing_attachment_id = attachment_url_to_postid($source_url);
+        if ($existing_attachment_id) {
+            return intval($existing_attachment_id);
+        }
+
+        $existing = get_posts(array(
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'meta_query' => array(
+                array(
+                    'key' => '_kaigen_original_source_url',
+                    'value' => $source_url,
+                ),
+            ),
+        ));
+
+        if (is_array($existing) && !empty($existing[0])) {
+            return intval($existing[0]);
+        }
+
+        return 0;
+    }
+
+    private function build_media_import_response($attachment_id, $original_source_url)
+    {
+        $attachment_url = wp_get_attachment_url($attachment_id);
+        if (!$attachment_url) {
+            return new WP_Error('attachment_url_missing', __('Unable to resolve the imported media URL', 'kaigen-connector'), array('status' => 500));
+        }
+
+        return array(
+            'attachment_id' => intval($attachment_id),
+            'source_url' => esc_url_raw($attachment_url),
+            'original_source_url' => esc_url_raw($original_source_url),
+        );
+    }
+
+    private function import_remote_media_asset($source_url, $filename = '', $alt = '', $title = '')
+    {
+        $existing_attachment_id = $this->find_existing_imported_media($source_url);
+        if ($existing_attachment_id > 0) {
+            if ($alt !== '') {
+                update_post_meta($existing_attachment_id, '_wp_attachment_image_alt', $alt);
+            }
+            if ($title !== '') {
+                wp_update_post(array(
+                    'ID' => $existing_attachment_id,
+                    'post_title' => $title,
+                ));
+            }
+
+            return $this->build_media_import_response($existing_attachment_id, $source_url);
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $tmp_file = download_url($source_url, 60);
+        if (is_wp_error($tmp_file)) {
+            return new WP_Error(
+                'media_download_failed',
+                sprintf(__('Failed to download remote media: %s', 'kaigen-connector'), $tmp_file->get_error_message()),
+                array('status' => 400)
+            );
+        }
+
+        $derived_filename = $filename;
+        if ($derived_filename === '') {
+            $path = parse_url($source_url, PHP_URL_PATH);
+            if (is_string($path)) {
+                $derived_filename = basename($path);
+            }
+        }
+        if ($derived_filename === '') {
+            $derived_filename = 'kaigen-media-' . time() . '.jpg';
+        }
+
+        $file_array = array(
+            'name' => sanitize_file_name($derived_filename),
+            'tmp_name' => $tmp_file,
+        );
+
+        $attachment_id = media_handle_sideload($file_array, 0, $title !== '' ? $title : null);
+        if (is_wp_error($attachment_id)) {
+            @unlink($tmp_file);
+            return new WP_Error(
+                'media_import_failed',
+                sprintf(__('Failed to import remote media: %s', 'kaigen-connector'), $attachment_id->get_error_message()),
+                array('status' => 500)
+            );
+        }
+
+        update_post_meta($attachment_id, '_kaigen_original_source_url', esc_url_raw($source_url));
+
+        if ($alt !== '') {
+            update_post_meta($attachment_id, '_wp_attachment_image_alt', $alt);
+        }
+
+        if ($title !== '') {
+            wp_update_post(array(
+                'ID' => intval($attachment_id),
+                'post_title' => $title,
+            ));
+        }
+
+        return $this->build_media_import_response($attachment_id, $source_url);
     }
 
     /**
