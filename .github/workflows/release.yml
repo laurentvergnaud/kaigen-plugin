@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           PLUGIN_FILE="kaigen-connector.php"
-          VERSION="$(sed -n 's/^[[:space:]]*\\*[[:space:]]*Version:[[:space:]]*\\(.*\\)$/\\1/p' "$PLUGIN_FILE" | head -n 1 | tr -d '\r')"
+          VERSION="$(sed -n 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*\(.*\)$/\1/p' "$PLUGIN_FILE" | head -n 1 | tr -d '\r')"
 
           if [ -z "$VERSION" ]; then
             echo "Failed to read plugin version from $PLUGIN_FILE" >&2

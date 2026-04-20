@@ -1,9 +1,10 @@
 <?php
+
 /**
  * Plugin Name: Kaigen Connector
  * Plugin URI: https://kaigen.app
  * Description: Connect your WordPress site to Kaigen for AI-powered content generation and management
- * Version: 1.1.2
+ * Version: 1.1.3
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Kaigen
  * Author URI: https://kaigen.app
@@ -32,7 +33,8 @@ define('KAIGEN_GITHUB_PLUGIN_BRANCH', 'main');
 /**
  * Main Kaigen Connector class
  */
-class Kaigen_Connector {
+class Kaigen_Connector
+{
 
     /**
      * Single instance of the class
@@ -42,7 +44,8 @@ class Kaigen_Connector {
     /**
      * Get single instance
      */
-    public static function get_instance() {
+    public static function get_instance()
+    {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -52,7 +55,8 @@ class Kaigen_Connector {
     /**
      * Constructor
      */
-    private function __construct() {
+    private function __construct()
+    {
         $this->load_dependencies();
         $this->init_hooks();
     }
@@ -60,7 +64,8 @@ class Kaigen_Connector {
     /**
      * Load required dependencies
      */
-    private function load_dependencies() {
+    private function load_dependencies()
+    {
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-plugin-updater.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-auth.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-api.php';
@@ -77,7 +82,8 @@ class Kaigen_Connector {
     /**
      * Initialize hooks
      */
-    private function init_hooks() {
+    private function init_hooks()
+    {
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
 
@@ -88,7 +94,8 @@ class Kaigen_Connector {
     /**
      * Plugin activation
      */
-    public function activate() {
+    public function activate()
+    {
         // Create custom capabilities
         $this->add_capabilities();
 
@@ -111,7 +118,8 @@ class Kaigen_Connector {
     /**
      * Plugin deactivation
      */
-    public function deactivate() {
+    public function deactivate()
+    {
         Kaigen_Sync_Events::get_instance()->unschedule_cron();
 
         // Flush rewrite rules
@@ -121,7 +129,8 @@ class Kaigen_Connector {
     /**
      * Initialize plugin
      */
-    public function init() {
+    public function init()
+    {
         Kaigen_Plugin_Updater::get_instance();
         // Initialize components
         Kaigen_Admin::get_instance();
@@ -140,7 +149,8 @@ class Kaigen_Connector {
     /**
      * Only enable WooCommerce tracker when Woo is available and tracking is configured.
      */
-    private function should_init_woocommerce_tracker() {
+    private function should_init_woocommerce_tracker()
+    {
         if (!class_exists('WooCommerce')) {
             return false;
         }
@@ -163,7 +173,8 @@ class Kaigen_Connector {
     /**
      * Load plugin textdomain
      */
-    public function load_textdomain() {
+    public function load_textdomain()
+    {
         load_plugin_textdomain(
             'kaigen-connector',
             false,
@@ -174,7 +185,8 @@ class Kaigen_Connector {
     /**
      * Add custom capabilities
      */
-    private function add_capabilities() {
+    private function add_capabilities()
+    {
         $roles = array('administrator', 'editor');
 
         foreach ($roles as $role_name) {
@@ -191,7 +203,8 @@ class Kaigen_Connector {
     /**
      * Get plugin version
      */
-    public function get_version() {
+    public function get_version()
+    {
         return KAIGEN_VERSION;
     }
 }
@@ -199,7 +212,8 @@ class Kaigen_Connector {
 /**
  * Initialize the plugin
  */
-function kaigen_connector() {
+function kaigen_connector()
+{
     return Kaigen_Connector::get_instance();
 }
 
