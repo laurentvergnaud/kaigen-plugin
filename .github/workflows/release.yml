@@ -20,11 +20,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compute version
+      - name: Compute version from plugin source
         id: vars
         shell: bash
         run: |
-          VERSION="$(date -u +'%Y.%m.%d').${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          PLUGIN_FILE="kaigen-connector.php"
+          VERSION="$(sed -n 's/^[[:space:]]*\\*[[:space:]]*Version:[[:space:]]*\\(.*\\)$/\\1/p' "$PLUGIN_FILE" | head -n 1 | tr -d '\r')"
+
+          if [ -z "$VERSION" ]; then
+            echo "Failed to read plugin version from $PLUGIN_FILE" >&2
+            exit 1
+          fi
+
           TAG="v${VERSION}"
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -43,20 +50,13 @@ jobs:
             --exclude 'tests/' \
             --exclude '.DS_Store'
 
-      - name: Update plugin version in build
+      - name: Align readme stable tag in build
         shell: bash
         run: |
-          PLUGIN_FILE="build/kaigen-connector/kaigen-connector.php"
           README_FILE="build/kaigen-connector/readme.txt"
-
-          sed -i -E "s/^([[:space:]]*\\*?[[:space:]]*Version:[[:space:]]*).*/\\1${{ steps.vars.outputs.version }}/" "$PLUGIN_FILE"
 
           if [ -f "$README_FILE" ]; then
             sed -i -E "s/^(Stable tag:[[:space:]]*).*/\\1${{ steps.vars.outputs.version }}/" "$README_FILE" || true
-          fi
-
-          if grep -q "KAIGEN_VERSION" "$PLUGIN_FILE"; then
-            sed -i -E "s/(define\\([\"']KAIGEN_VERSION[\"'],[[:space:]]*[\"']).*([\"'][[:space:]]*\\);)/\\1${{ steps.vars.outputs.version }}\\2/" "$PLUGIN_FILE" || true
           fi
 
       - name: Build zip
