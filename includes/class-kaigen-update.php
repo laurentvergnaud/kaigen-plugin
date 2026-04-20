@@ -503,6 +503,7 @@ class Kaigen_Update {
         }
 
         $kaigen = $extensions['kaigen'];
+        $has_explicit_enabled = array_key_exists('structured_data_enabled', $kaigen);
 
         if (array_key_exists('structured_data_json', $kaigen)) {
             $structured_data_json = $kaigen['structured_data_json'];
@@ -512,14 +513,13 @@ class Kaigen_Update {
                 delete_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED);
             } else {
                 update_post_meta($post_id, Kaigen_Structured_Data::META_JSON, wp_slash(strval($structured_data_json)));
-
-                if (!metadata_exists('post', $post_id, Kaigen_Structured_Data::META_ENABLED)) {
+                if (!$has_explicit_enabled) {
                     update_post_meta($post_id, Kaigen_Structured_Data::META_ENABLED, '1');
                 }
             }
         }
 
-        if (array_key_exists('structured_data_enabled', $kaigen)) {
+        if ($has_explicit_enabled) {
             update_post_meta(
                 $post_id,
                 Kaigen_Structured_Data::META_ENABLED,

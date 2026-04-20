@@ -3,7 +3,7 @@
  * Plugin Name: Kaigen Connector
  * Plugin URI: https://kaigen.app
  * Description: Connect your WordPress site to Kaigen for AI-powered content generation and management
- * Version: 1.1.1
+ * Version: 1.1.2
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Kaigen
  * Author URI: https://kaigen.app
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.1.1');
+define('KAIGEN_VERSION', '1.1.2');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));
