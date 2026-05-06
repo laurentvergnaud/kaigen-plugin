@@ -136,7 +136,7 @@ class Kaigen_Admin
                         'error'
                     );
                     // Fallback to existing
-                    $sanitized['api_url'] = isset($existing['api_url']) ? $existing['api_url'] : 'https://kaigen.app';
+                    $sanitized['api_url'] = isset($existing['api_url']) ? $existing['api_url'] : 'https://app.kaigen.net';
                 } else {
                     $sanitized['api_url'] = $sanitized_url;
                 }
@@ -145,7 +145,7 @@ class Kaigen_Admin
                 if (isset($existing['api_url']) && !empty($existing['api_url'])) {
                     $sanitized['api_url'] = $existing['api_url'];
                 } else {
-                    $sanitized['api_url'] = 'https://kaigen.app';
+                    $sanitized['api_url'] = 'https://app.kaigen.net';
                 }
             }
 
@@ -325,7 +325,7 @@ class Kaigen_Admin
     private function render_authentication_tab($settings, $auth)
     {
         $auth_method = isset($settings['auth_method']) ? $settings['auth_method'] : 'api_key';
-        $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://kaigen.app';
+        $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://app.kaigen.net';
         $tracking_enabled = !isset($settings['tracking_enabled']) || (int) $settings['tracking_enabled'] === 1;
         $project_id = isset($settings['project_id']) ? $settings['project_id'] : '';
     ?>

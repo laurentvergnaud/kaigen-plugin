@@ -94,7 +94,7 @@ class Kaigen_Auth {
      */
     public function get_api_url() {
         $settings = get_option('kaigen_settings', array());
-        return isset($settings['api_url']) ? $settings['api_url'] : 'https://kaigen.app';
+        return isset($settings['api_url']) ? $settings['api_url'] : 'https://app.kaigen.net';
     }
 
     /**
