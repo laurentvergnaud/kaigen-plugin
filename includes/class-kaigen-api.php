@@ -77,6 +77,15 @@ class Kaigen_API {
     }
 
     /**
+     * Get public browser tracking config for this WordPress site.
+     */
+    public function get_tracking_config() {
+        return $this->request('api/wordpress/tracking-config', 'POST', array(
+            'wpUrl' => home_url()
+        ));
+    }
+
+    /**
      * Send site structure to Kaigen
      */
     public function send_site_structure($project_id) {
@@ -164,7 +173,8 @@ class Kaigen_API {
             'success' => true,
             'project_id' => $validation['project_id'],
             'user_id' => $validation['user_id'],
-            'capabilities' => $validation['capabilities']
+            'capabilities' => $validation['capabilities'],
+            'tracking_public_key' => isset($validation['tracking_public_key']) ? $validation['tracking_public_key'] : null
         );
     }
 
@@ -281,4 +291,3 @@ class Kaigen_API {
         return array_slice(array_reverse($logs), 0, $limit);
     }
 }
-

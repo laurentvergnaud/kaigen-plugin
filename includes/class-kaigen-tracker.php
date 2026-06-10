@@ -16,6 +16,8 @@ class Kaigen_Tracker
     const TRACK_PAYLOAD_VERSION = 'wp_tracker_v1';
 
     const RATE_LIMIT_PER_MINUTE = 120;
+    const TRACKING_PUBLIC_KEY_RETRY_SECONDS = 10 * MINUTE_IN_SECONDS;
+    const TRACKING_PUBLIC_KEY_MAX_RETRIES = 10;
 
     public static function get_instance()
     {
@@ -69,8 +71,15 @@ class Kaigen_Tracker
             return;
         }
 
-        $token_day = gmdate('Y-m-d');
-        $signed_token = $this->build_signed_token($project_id, $token_day);
+        $tracking_public_key = isset($settings['tracking_public_key']) ? sanitize_text_field($settings['tracking_public_key']) : '';
+        if (empty($tracking_public_key)) {
+            $tracking_public_key = $this->load_tracking_public_key($settings);
+        }
+
+        if (empty($tracking_public_key)) {
+            return;
+        }
+
         $queried_post_id = function_exists('get_queried_object_id') ? (int) get_queried_object_id() : 0;
         $wp_context = array(
             'postId' => null,
@@ -92,11 +101,12 @@ class Kaigen_Tracker
             true
         );
 
+        $api_url = $auth->get_api_url();
+
         wp_localize_script('kaigen-tracker', 'kaigenTrackerConfig', array(
-            'endpoint' => rest_url($this->namespace . '/track'),
+            'endpoint' => trailingslashit($api_url) . 'api/track/public',
             'projectId' => $project_id,
-            'tokenDay' => $token_day,
-            'token' => $signed_token,
+            'trackingPublicKey' => $tracking_public_key,
             'consentScope' => 'audience_only',
             'sessionTtlMs' => 30 * MINUTE_IN_SECONDS * 1000,
             'visitorTtlDays' => 395,
@@ -399,6 +409,62 @@ class Kaigen_Tracker
         }
 
         return (int) $settings['tracking_enabled'] === 1;
+    }
+
+    private function load_tracking_public_key($settings)
+    {
+        if (!$this->should_retry_tracking_public_key($settings)) {
+            return '';
+        }
+
+        $api = Kaigen_API::get_instance();
+        $response = $api->get_tracking_config();
+
+        $settings['tracking_public_key_attempted_at'] = gmdate('c');
+
+        if (!is_wp_error($response) && !empty($response['trackingPublicKey']) && is_string($response['trackingPublicKey'])) {
+            $settings['tracking_public_key'] = sanitize_text_field($response['trackingPublicKey']);
+            unset($settings['tracking_public_key_error']);
+            unset($settings['tracking_public_key_attempted_at']);
+            unset($settings['tracking_public_key_retry_count']);
+        } elseif (is_wp_error($response)) {
+            $settings['tracking_public_key_error'] = $response->get_error_message();
+            $settings['tracking_public_key_retry_count'] = $this->get_tracking_public_key_retry_count($settings) + 1;
+        } else {
+            $settings['tracking_public_key_error'] = __('Tracking public key was not returned by Kaigen', 'kaigen-connector');
+            $settings['tracking_public_key_retry_count'] = $this->get_tracking_public_key_retry_count($settings) + 1;
+        }
+
+        update_option('kaigen_settings', $settings);
+
+        return isset($settings['tracking_public_key']) ? sanitize_text_field($settings['tracking_public_key']) : '';
+    }
+
+    private function should_retry_tracking_public_key($settings)
+    {
+        if ($this->get_tracking_public_key_retry_count($settings) >= self::TRACKING_PUBLIC_KEY_MAX_RETRIES) {
+            return false;
+        }
+
+        if (empty($settings['tracking_public_key_attempted_at']) || !is_string($settings['tracking_public_key_attempted_at'])) {
+            return true;
+        }
+
+        $attempted_at = strtotime($settings['tracking_public_key_attempted_at']);
+        if (!$attempted_at) {
+            return true;
+        }
+
+        return (time() - $attempted_at) >= self::TRACKING_PUBLIC_KEY_RETRY_SECONDS;
+    }
+
+    private function get_tracking_public_key_retry_count($settings)
+    {
+        if (!isset($settings['tracking_public_key_retry_count'])) {
+            return 0;
+        }
+
+        return max(0, (int) $settings['tracking_public_key_retry_count']);
     }
 
     private function is_valid_event_id($event_id)

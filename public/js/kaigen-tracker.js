@@ -14,7 +14,7 @@
     storage = null;
   }
 
-  if (!config.endpoint || !config.projectId || !config.token || !config.tokenDay) {
+  if (!config.endpoint || !config.trackingPublicKey) {
     return;
   }
 
@@ -357,8 +357,7 @@
       source_post_id: sourceHints.source_post_id,
       source_post_type: sourceHints.source_post_type,
       source_post_slug: sourceHints.source_post_slug,
-      token_day: config.tokenDay,
-      token: config.token
+      tracking_public_key: config.trackingPublicKey
     };
   }
 
@@ -472,7 +471,7 @@
     var preferBeacon = options && options.preferBeacon === true;
     if ((preferBeacon || typeof fetch !== 'function') && navigator.sendBeacon) {
       try {
-        var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        var blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
         var queued = navigator.sendBeacon(config.endpoint, blob);
         return queued ? Promise.resolve(true) : Promise.reject(new Error('beacon_failed'));
       } catch (e) {
@@ -482,10 +481,10 @@
 
     return fetch(config.endpoint, {
       method: 'POST',
-      credentials: 'same-origin',
+      credentials: 'omit',
       keepalive: true,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'text/plain'
       },
       body: JSON.stringify(payload)
     }).then(function (response) {

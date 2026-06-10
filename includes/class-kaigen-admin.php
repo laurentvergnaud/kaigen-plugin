@@ -96,6 +96,28 @@ class Kaigen_Admin
                 $sanitized['tracking_enabled'] = (int) $input['tracking_enabled'] === 1 ? 1 : 0;
             }
 
+            if (isset($input['tracking_public_key'])) {
+                $sanitized['tracking_public_key'] = sanitize_text_field((string) $input['tracking_public_key']);
+            }
+
+            if (isset($input['tracking_public_key_attempted_at'])) {
+                $sanitized['tracking_public_key_attempted_at'] = sanitize_text_field((string) $input['tracking_public_key_attempted_at']);
+            } elseif (array_key_exists('tracking_public_key_attempted_at', $input) && $input['tracking_public_key_attempted_at'] === null) {
+                unset($sanitized['tracking_public_key_attempted_at']);
+            }
+
+            if (isset($input['tracking_public_key_error'])) {
+                $sanitized['tracking_public_key_error'] = sanitize_text_field((string) $input['tracking_public_key_error']);
+            } elseif (array_key_exists('tracking_public_key_error', $input) && $input['tracking_public_key_error'] === null) {
+                unset($sanitized['tracking_public_key_error']);
+            }
+
+            if (isset($input['tracking_public_key_retry_count'])) {
+                $sanitized['tracking_public_key_retry_count'] = max(0, (int) $input['tracking_public_key_retry_count']);
+            } elseif (array_key_exists('tracking_public_key_retry_count', $input) && $input['tracking_public_key_retry_count'] === null) {
+                unset($sanitized['tracking_public_key_retry_count']);
+            }
+
             if (isset($input['structured_data_injection_enabled'])) {
                 $sanitized['structured_data_injection_enabled'] = (int) $input['structured_data_injection_enabled'] === 1 ? 1 : 0;
             }
@@ -328,8 +350,39 @@ class Kaigen_Admin
         $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://app.kaigen.net';
         $tracking_enabled = !isset($settings['tracking_enabled']) || (int) $settings['tracking_enabled'] === 1;
         $project_id = isset($settings['project_id']) ? $settings['project_id'] : '';
+        $tracking_public_key = isset($settings['tracking_public_key']) ? $settings['tracking_public_key'] : '';
+        $tracking_public_key_error = isset($settings['tracking_public_key_error']) ? $settings['tracking_public_key_error'] : '';
+        $tracking_public_key_retry_count = isset($settings['tracking_public_key_retry_count']) ? max(0, (int) $settings['tracking_public_key_retry_count']) : 0;
+        $tracking_public_key_max_retries = defined('Kaigen_Tracker::TRACKING_PUBLIC_KEY_MAX_RETRIES') ? Kaigen_Tracker::TRACKING_PUBLIC_KEY_MAX_RETRIES : 10;
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="authentication">
+        <?php if ($tracking_enabled && !empty($project_id) && empty($tracking_public_key) && !empty($tracking_public_key_error)): ?>
+            <div class="notice notice-error inline">
+                <p>
+                    <strong><?php _e('Site tracking is not active.', 'kaigen-connector'); ?></strong>
+                    <?php _e('Kaigen could not retrieve the public tracking key required by the frontend tracker.', 'kaigen-connector'); ?>
+                </p>
+                <p>
+                    <?php
+                    printf(
+                        /* translators: 1: retry count, 2: retry limit */
+                        esc_html__('Automatic retry attempts: %1$d/%2$d.', 'kaigen-connector'),
+                        (int) $tracking_public_key_retry_count,
+                        (int) $tracking_public_key_max_retries
+                    );
+                    ?>
+                    <?php if ($tracking_public_key_retry_count >= $tracking_public_key_max_retries): ?>
+                        <?php _e('Automatic retries have stopped. Use "Save and activate Kaigen" after fixing the issue to request a new key.', 'kaigen-connector'); ?>
+                    <?php else: ?>
+                        <?php _e('The plugin will retry automatically, or you can use "Save and activate Kaigen" to retry now.', 'kaigen-connector'); ?>
+                    <?php endif; ?>
+                </p>
+                <p>
+                    <strong><?php _e('Last error:', 'kaigen-connector'); ?></strong>
+                    <?php echo esc_html($tracking_public_key_error); ?>
+                </p>
+            </div>
+        <?php endif; ?>
         <table class="form-table">
             <tr>
                 <th scope="row"><?php _e('Authentication Method', 'kaigen-connector'); ?></th>
@@ -633,6 +686,12 @@ class Kaigen_Admin
                 $settings['api_url'] = $api_url_for_test;
             }
             $settings['project_id'] = sanitize_text_field($result['project_id']);
+            if (!empty($result['tracking_public_key']) && is_string($result['tracking_public_key'])) {
+                $settings['tracking_public_key'] = sanitize_text_field($result['tracking_public_key']);
+                unset($settings['tracking_public_key_attempted_at']);
+                unset($settings['tracking_public_key_error']);
+                unset($settings['tracking_public_key_retry_count']);
+            }
             $updated = update_option('kaigen_settings', $settings);
             $stored_after = $auth_instance->get_api_key();
             error_log('[Kaigen connector][ajax_test_connection] Saved project_id=' . strval($result['project_id']) . ', update_option=' . ($updated ? 'true' : 'false') . ', key_before=' . $this->mask_api_key_for_logs($stored_before) . ', key_submitted=' . $this->mask_api_key_for_logs($api_key_for_test) . ', key_after=' . $this->mask_api_key_for_logs($stored_after));

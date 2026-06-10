@@ -143,6 +143,7 @@ class Kaigen_Auth {
         $trace_id = isset($body['traceId']) ? $body['traceId'] : null;
         $platform_id = isset($body['platformId']) ? $body['platformId'] : null;
         $project_id = isset($body['projectId']) ? $body['projectId'] : null;
+        $tracking_public_key = isset($body['trackingPublicKey']) ? $body['trackingPublicKey'] : null;
         $error_message = isset($body['error']) ? $body['error'] : '';
         error_log('[Kaigen connector][validate_with_kaigen] Response: code=' . intval($code) . ', valid=' . (isset($body['valid']) ? var_export($body['valid'], true) : 'null') . ', project_id=' . strval($project_id) . ', platform_id=' . strval($platform_id) . ', trace_id=' . strval($trace_id) . ', error=' . strval($error_message));
 
@@ -173,7 +174,8 @@ class Kaigen_Auth {
             'valid' => isset($body['valid']) ? $body['valid'] : false,
             'project_id' => isset($body['projectId']) ? $body['projectId'] : null,
             'user_id' => isset($body['userId']) ? $body['userId'] : null,
-            'capabilities' => isset($body['capabilities']) ? $body['capabilities'] : array()
+            'capabilities' => isset($body['capabilities']) ? $body['capabilities'] : array(),
+            'tracking_public_key' => is_string($tracking_public_key) ? $tracking_public_key : null
         );
     }
 
