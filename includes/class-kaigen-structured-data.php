@@ -1,6 +1,6 @@
 <?php
 /**
- * Structured data injector for Kaigen-generated JSON-LD.
+ * Structured data injector for Tamiro-generated JSON-LD.
  */
 
 if (!defined('ABSPATH')) {

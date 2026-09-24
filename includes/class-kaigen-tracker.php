@@ -1,7 +1,7 @@
 <?php
 /**
  * Frontend tracker handler
- * Captures first-party pageviews and forwards them to Kaigen through WordPress.
+ * Captures first-party pageviews and forwards them to Tamiro through WordPress.
  */
 
 if (!defined('ABSPATH')) {
@@ -207,16 +207,18 @@ class Kaigen_Tracker
         $response = $api->send_tracking_event($event);
 
         if (is_wp_error($response)) {
+            $status = $this->get_forward_error_status($response);
             $api->log_activity('tracking_pageview', 'error', array(
                 'project_id' => $project_id,
                 'event_id' => $validated['event_id'],
                 'error' => $response->get_error_message(),
+                'status' => $status,
             ));
 
             return new WP_Error(
                 'kaigen_track_forward_failed',
-                __('Unable to forward tracking event to Kaigen', 'kaigen-connector'),
-                array('status' => 502)
+                __('Unable to forward tracking event to Tamiro', 'kaigen-connector'),
+                array('status' => $status)
             );
         }
 
@@ -431,7 +433,7 @@ class Kaigen_Tracker
             $settings['tracking_public_key_error'] = $response->get_error_message();
             $settings['tracking_public_key_retry_count'] = $this->get_tracking_public_key_retry_count($settings) + 1;
         } else {
-            $settings['tracking_public_key_error'] = __('Tracking public key was not returned by Kaigen', 'kaigen-connector');
+            $settings['tracking_public_key_error'] = __('Tracking public key was not returned by Tamiro', 'kaigen-connector');
             $settings['tracking_public_key_retry_count'] = $this->get_tracking_public_key_retry_count($settings) + 1;
         }
 
@@ -465,6 +467,22 @@ class Kaigen_Tracker
         }
 
         return max(0, (int) $settings['tracking_public_key_retry_count']);
+    }
+
+    private function get_forward_error_status($error)
+    {
+        if (!$error instanceof WP_Error) {
+            return 502;
+        }
+
+        $data = $error->get_error_data();
+        $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
+
+        if ($status >= 400 && $status < 500) {
+            return $status;
+        }
+
+        return 502;
     }
 
     private function is_valid_event_id($event_id)

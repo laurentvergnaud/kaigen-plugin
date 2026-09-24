@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Plugin Name: Kaigen Connector
- * Plugin URI: https://kaigen.app
- * Description: Connect your WordPress site to Kaigen for AI-powered content generation and management
- * Version: 1.1.7
+ * Plugin Name: Tamiro Connector
+ * Plugin URI: https://app.tamiro.ai
+ * Description: Connect your WordPress site to Tamiro for AI-powered content generation and management
+ * Version: 1.2.0
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
- * Author: Kaigen
- * Author URI: https://kaigen.app
+ * Author: Tamiro
+ * Author URI: https://app.tamiro.ai
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: kaigen-connector
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.1.7');
+define('KAIGEN_VERSION', '1.2.0');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -31,7 +31,7 @@ define('KAIGEN_GITHUB_PLUGIN_REPOSITORY', 'https://github.com/laurentvergnaud/ka
 define('KAIGEN_GITHUB_PLUGIN_BRANCH', 'main');
 
 /**
- * Main Kaigen Connector class
+ * Main Tamiro Connector class
  */
 class Kaigen_Connector
 {
@@ -106,7 +106,7 @@ class Kaigen_Connector
         if (!get_option('kaigen_settings')) {
             add_option('kaigen_settings', array(
                 'auth_method' => 'api_key',
-                'api_url' => 'https://app.kaigen.net',
+                'api_url' => 'https://app.tamiro.ai',
                 'enabled_post_types' => array('post', 'page'),
                 'tracking_enabled' => 1,
                 'structured_data_injection_enabled' => 1,

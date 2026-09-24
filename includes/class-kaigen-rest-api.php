@@ -2,7 +2,7 @@
 
 /**
  * REST API handler
- * Registers custom REST API endpoints for Kaigen integration
+ * Registers custom REST API endpoints for Tamiro integration
  */
 
 if (!defined('ABSPATH')) {
@@ -114,7 +114,7 @@ class Kaigen_REST_API
             } else {
                 $route = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
             }
-            error_log('[Kaigen connector][rest_permission] route=' . $route . ', allowed=' . ($allowed ? 'true' : 'false'));
+            error_log('[Tamiro connector][rest_permission] route=' . $route . ', allowed=' . ($allowed ? 'true' : 'false'));
         }
 
         return $allowed;

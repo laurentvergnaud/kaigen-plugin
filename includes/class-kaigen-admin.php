@@ -37,8 +37,8 @@ class Kaigen_Admin
     public function add_admin_menu()
     {
         add_options_page(
-            __('Kaigen Connector', 'kaigen-connector'),
-            __('Kaigen Connector', 'kaigen-connector'),
+            __('Tamiro Connector', 'kaigen-connector'),
+            __('Tamiro Connector', 'kaigen-connector'),
             'kaigen_manage_settings',
             'kaigen-connector',
             array($this, 'render_settings_page')
@@ -158,7 +158,7 @@ class Kaigen_Admin
                         'error'
                     );
                     // Fallback to existing
-                    $sanitized['api_url'] = isset($existing['api_url']) ? $existing['api_url'] : 'https://app.kaigen.net';
+                    $sanitized['api_url'] = isset($existing['api_url']) ? $existing['api_url'] : 'https://app.tamiro.ai';
                 } else {
                     $sanitized['api_url'] = $sanitized_url;
                 }
@@ -167,7 +167,7 @@ class Kaigen_Admin
                 if (isset($existing['api_url']) && !empty($existing['api_url'])) {
                     $sanitized['api_url'] = $existing['api_url'];
                 } else {
-                    $sanitized['api_url'] = 'https://app.kaigen.net';
+                    $sanitized['api_url'] = 'https://app.tamiro.ai';
                 }
             }
 
@@ -272,11 +272,11 @@ class Kaigen_Admin
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('kaigen_admin'),
             'strings' => array(
-                'testing' => __('Saving settings and activating Kaigen...', 'kaigen-connector'),
+                'testing' => __('Saving settings and activating Tamiro...', 'kaigen-connector'),
                 'syncing' => __('Syncing content...', 'kaigen-connector'),
                 'success' => __('Saved and activated!', 'kaigen-connector'),
                 'error' => __('Error:', 'kaigen-connector'),
-                'testConnection' => __('Save and activate Kaigen', 'kaigen-connector'),
+                'testConnection' => __('Save and activate Tamiro', 'kaigen-connector'),
                 'syncContentNow' => __('Sync Content Now', 'kaigen-connector')
             )
         ));
@@ -347,7 +347,7 @@ class Kaigen_Admin
     private function render_authentication_tab($settings, $auth)
     {
         $auth_method = isset($settings['auth_method']) ? $settings['auth_method'] : 'api_key';
-        $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://app.kaigen.net';
+        $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://app.tamiro.ai';
         $tracking_enabled = !isset($settings['tracking_enabled']) || (int) $settings['tracking_enabled'] === 1;
         $project_id = isset($settings['project_id']) ? $settings['project_id'] : '';
         $tracking_public_key = isset($settings['tracking_public_key']) ? $settings['tracking_public_key'] : '';
@@ -360,7 +360,7 @@ class Kaigen_Admin
             <div class="notice notice-error inline">
                 <p>
                     <strong><?php _e('Site tracking is not active.', 'kaigen-connector'); ?></strong>
-                    <?php _e('Kaigen could not retrieve the public tracking key required by the frontend tracker.', 'kaigen-connector'); ?>
+                    <?php _e('Tamiro could not retrieve the public tracking key required by the frontend tracker.', 'kaigen-connector'); ?>
                 </p>
                 <p>
                     <?php
@@ -372,9 +372,9 @@ class Kaigen_Admin
                     );
                     ?>
                     <?php if ($tracking_public_key_retry_count >= $tracking_public_key_max_retries): ?>
-                        <?php _e('Automatic retries have stopped. Use "Save and activate Kaigen" after fixing the issue to request a new key.', 'kaigen-connector'); ?>
+                        <?php _e('Automatic retries have stopped. Use "Save and activate Tamiro" after fixing the issue to request a new key.', 'kaigen-connector'); ?>
                     <?php else: ?>
-                        <?php _e('The plugin will retry automatically, or you can use "Save and activate Kaigen" to retry now.', 'kaigen-connector'); ?>
+                        <?php _e('The plugin will retry automatically, or you can use "Save and activate Tamiro" to retry now.', 'kaigen-connector'); ?>
                     <?php endif; ?>
                 </p>
                 <p>
@@ -395,15 +395,15 @@ class Kaigen_Admin
                         <input type="radio" name="kaigen_settings[auth_method]" value="app_password" <?php checked($auth_method, 'app_password'); ?>>
                         <?php _e('WordPress Application Password', 'kaigen-connector'); ?>
                     </label>
-                    <p class="description"><?php _e('Choose how Kaigen will authenticate with your WordPress site.', 'kaigen-connector'); ?></p>
+                    <p class="description"><?php _e('Choose how Tamiro will authenticate with your WordPress site.', 'kaigen-connector'); ?></p>
                 </td>
             </tr>
 
             <tr>
-                <th scope="row"><?php _e('Kaigen API URL', 'kaigen-connector'); ?></th>
+                <th scope="row"><?php _e('Tamiro API URL', 'kaigen-connector'); ?></th>
                 <td>
                     <input type="url" name="kaigen_settings[api_url]" value="<?php echo esc_attr($api_url); ?>" class="regular-text">
-                    <p class="description"><?php _e('The URL of your Kaigen instance.', 'kaigen-connector'); ?></p>
+                    <p class="description"><?php _e('The URL of your Tamiro instance.', 'kaigen-connector'); ?></p>
                 </td>
             </tr>
 
@@ -413,7 +413,7 @@ class Kaigen_Admin
                     <?php $has_api_key = $auth->get_api_key(); ?>
                     <input type="password" name="kaigen_settings[api_key]" value="<?php echo $has_api_key ? '••••••••••••••••' : ''; ?>" class="regular-text" placeholder="<?php _e('Enter your API key', 'kaigen-connector'); ?>">
                     <p class="description">
-                        <?php _e('Generate an API key in your Kaigen dashboard and paste it here.', 'kaigen-connector'); ?>
+                        <?php _e('Generate an API key in your Tamiro dashboard and paste it here.', 'kaigen-connector'); ?>
                         <?php if ($has_api_key): ?>
                             <br><strong><?php _e('API key is currently configured. Enter a new key to replace it.', 'kaigen-connector'); ?></strong>
                         <?php endif; ?>
@@ -444,7 +444,7 @@ class Kaigen_Admin
                 <th scope="row"><?php _e('Activation', 'kaigen-connector'); ?></th>
                 <td>
                     <button type="button" id="kaigen-test-connection" class="button">
-                        <?php _e('Save and activate Kaigen', 'kaigen-connector'); ?>
+                        <?php _e('Save and activate Tamiro', 'kaigen-connector'); ?>
                     </button>
                     <span id="kaigen-connection-status"></span>
                     <p class="description">
@@ -468,7 +468,7 @@ class Kaigen_Admin
                         <input type="checkbox" name="kaigen_settings[tracking_enabled]" value="1" <?php checked($tracking_enabled); ?>>
                         <?php _e('Enable first-party pageview tracking', 'kaigen-connector'); ?>
                     </label>
-                    <p class="description"><?php _e('When enabled, the plugin sends anonymous pageview events to Kaigen for journey analysis.', 'kaigen-connector'); ?></p>
+                    <p class="description"><?php _e('When enabled, the plugin sends anonymous pageview events to Tamiro for journey analysis.', 'kaigen-connector'); ?></p>
                 </td>
             </tr>
         </table>
@@ -485,7 +485,7 @@ class Kaigen_Admin
         $post_types = $content->get_custom_post_types();
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="post-types">
-        <p><?php _e('Select which post types should be accessible to Kaigen:', 'kaigen-connector'); ?></p>
+        <p><?php _e('Select which post types should be accessible to Tamiro:', 'kaigen-connector'); ?></p>
 
         <table class="wp-list-table widefat fixed striped">
             <thead>
@@ -518,19 +518,19 @@ class Kaigen_Admin
         </table>
 
         <p class="description">
-            <?php _e('Only selected post types will be visible and editable through Kaigen.', 'kaigen-connector'); ?>
+            <?php _e('Only selected post types will be visible and editable through Tamiro.', 'kaigen-connector'); ?>
         </p>
 
         <h3><?php _e('Structured Data', 'kaigen-connector'); ?></h3>
         <table class="form-table">
             <tr>
-                <th scope="row"><?php _e('Kaigen JSON-LD', 'kaigen-connector'); ?></th>
+                <th scope="row"><?php _e('Tamiro JSON-LD', 'kaigen-connector'); ?></th>
                 <td>
                     <label>
                         <input type="checkbox" name="kaigen_settings[structured_data_injection_enabled]" value="1" <?php checked($structured_data_injection_enabled); ?>>
-                        <?php _e('Inject Kaigen structured data on published pages', 'kaigen-connector'); ?>
+                        <?php _e('Inject Tamiro structured data on published pages', 'kaigen-connector'); ?>
                     </label>
-                    <p class="description"><?php _e('When enabled, Kaigen injects valid JSON-LD stored on each post without adding scripts to the editable content.', 'kaigen-connector'); ?></p>
+                    <p class="description"><?php _e('When enabled, Tamiro injects valid JSON-LD stored on each post without adding scripts to the editable content.', 'kaigen-connector'); ?></p>
                 </td>
             </tr>
         </table>
@@ -546,7 +546,7 @@ class Kaigen_Admin
         $roles = wp_roles()->get_names();
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="permissions">
-        <p><?php _e('Select which user roles can use Kaigen features:', 'kaigen-connector'); ?></p>
+        <p><?php _e('Select which user roles can use Tamiro features:', 'kaigen-connector'); ?></p>
 
         <table class="form-table">
             <?php foreach ($roles as $role_slug => $role_name): ?>
@@ -558,7 +558,7 @@ class Kaigen_Admin
                                 name="kaigen_settings[role_permissions][]"
                                 value="<?php echo esc_attr($role_slug); ?>"
                                 <?php checked(in_array($role_slug, $role_permissions)); ?>>
-                            <?php _e('Can edit posts with Kaigen', 'kaigen-connector'); ?>
+                            <?php _e('Can edit posts with Tamiro', 'kaigen-connector'); ?>
                         </label>
                     </td>
                 </tr>
@@ -566,7 +566,7 @@ class Kaigen_Admin
         </table>
 
         <p class="description">
-            <?php _e('Users with selected roles will see the "Open in Kaigen" button in the post editor.', 'kaigen-connector'); ?>
+            <?php _e('Users with selected roles will see the "Open in Tamiro" button in the post editor.', 'kaigen-connector'); ?>
         </p>
     <?php
     }
@@ -650,7 +650,7 @@ class Kaigen_Admin
             }
         }
 
-        error_log('[Kaigen connector][ajax_test_connection] Incoming activation request: has_api_key=' . (!empty($api_key_for_test) ? 'yes' : 'no') . ', api_key_len=' . strval(is_string($api_key_for_test) ? strlen($api_key_for_test) : 0) . ', api_key_preview=' . $api_key_preview . ', api_url=' . strval($submitted_api_url));
+        error_log('[Tamiro connector][ajax_test_connection] Incoming activation request: has_api_key=' . (!empty($api_key_for_test) ? 'yes' : 'no') . ', api_key_len=' . strval(is_string($api_key_for_test) ? strlen($api_key_for_test) : 0) . ', api_key_preview=' . $api_key_preview . ', api_url=' . strval($submitted_api_url));
 
         $api_url_for_test = null;
         if (!empty($submitted_api_url)) {
@@ -667,10 +667,10 @@ class Kaigen_Admin
 
         $api = Kaigen_API::get_instance();
         $result = $api->test_connection($api_key_for_test, $api_url_for_test);
-        error_log('[Kaigen connector][ajax_test_connection] Result type=' . (is_wp_error($result) ? 'wp_error' : 'success'));
+        error_log('[Tamiro connector][ajax_test_connection] Result type=' . (is_wp_error($result) ? 'wp_error' : 'success'));
 
         if (is_wp_error($result)) {
-            error_log('[Kaigen connector][ajax_test_connection] Error=' . $result->get_error_message());
+            error_log('[Tamiro connector][ajax_test_connection] Error=' . $result->get_error_message());
             wp_send_json_error(array('message' => $result->get_error_message()));
         }
 
@@ -694,10 +694,10 @@ class Kaigen_Admin
             }
             $updated = update_option('kaigen_settings', $settings);
             $stored_after = $auth_instance->get_api_key();
-            error_log('[Kaigen connector][ajax_test_connection] Saved project_id=' . strval($result['project_id']) . ', update_option=' . ($updated ? 'true' : 'false') . ', key_before=' . $this->mask_api_key_for_logs($stored_before) . ', key_submitted=' . $this->mask_api_key_for_logs($api_key_for_test) . ', key_after=' . $this->mask_api_key_for_logs($stored_after));
+            error_log('[Tamiro connector][ajax_test_connection] Saved project_id=' . strval($result['project_id']) . ', update_option=' . ($updated ? 'true' : 'false') . ', key_before=' . $this->mask_api_key_for_logs($stored_before) . ', key_submitted=' . $this->mask_api_key_for_logs($api_key_for_test) . ', key_after=' . $this->mask_api_key_for_logs($stored_after));
         }
 
-        error_log('[Kaigen connector][ajax_test_connection] Success payload=' . wp_json_encode($result));
+        error_log('[Tamiro connector][ajax_test_connection] Success payload=' . wp_json_encode($result));
         wp_send_json_success($result);
     }
 

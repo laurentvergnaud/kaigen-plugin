@@ -90,15 +90,15 @@ class Kaigen_Auth {
     }
 
     /**
-     * Get Kaigen API URL
+     * Get Tamiro API URL
      */
     public function get_api_url() {
         $settings = get_option('kaigen_settings', array());
-        return isset($settings['api_url']) ? $settings['api_url'] : 'https://app.kaigen.net';
+        return isset($settings['api_url']) ? $settings['api_url'] : 'https://app.tamiro.ai';
     }
 
     /**
-     * Validate API key with Kaigen
+     * Validate API key with Tamiro
      */
     public function validate_with_kaigen($api_key = null, $api_url_override = null, $enforce_project_guard = true) {
         if (!$api_key) {
@@ -119,7 +119,7 @@ class Kaigen_Auth {
         $api_url = $api_url_override ? esc_url_raw($api_url_override) : $this->get_api_url();
         $wp_url = home_url();
         $api_key_preview = is_string($api_key) ? substr($api_key, 0, 12) . '...' : 'null';
-        error_log('[Kaigen connector][validate_with_kaigen] Sending validation request: api_url=' . $api_url . ', wp_url=' . $wp_url . ', api_key=' . $api_key_preview);
+        error_log('[Tamiro connector][validate_with_kaigen] Sending validation request: api_url=' . $api_url . ', wp_url=' . $wp_url . ', api_key=' . $api_key_preview);
 
         $response = wp_remote_post($api_url . '/api/wordpress/validate', array(
             'headers' => array(
@@ -131,7 +131,7 @@ class Kaigen_Auth {
         ));
 
         if (is_wp_error($response)) {
-            error_log('[Kaigen connector][validate_with_kaigen] Request failed: ' . $response->get_error_message());
+            error_log('[Tamiro connector][validate_with_kaigen] Request failed: ' . $response->get_error_message());
             return array(
                 'valid' => false,
                 'error' => $response->get_error_message()
@@ -145,7 +145,7 @@ class Kaigen_Auth {
         $project_id = isset($body['projectId']) ? $body['projectId'] : null;
         $tracking_public_key = isset($body['trackingPublicKey']) ? $body['trackingPublicKey'] : null;
         $error_message = isset($body['error']) ? $body['error'] : '';
-        error_log('[Kaigen connector][validate_with_kaigen] Response: code=' . intval($code) . ', valid=' . (isset($body['valid']) ? var_export($body['valid'], true) : 'null') . ', project_id=' . strval($project_id) . ', platform_id=' . strval($platform_id) . ', trace_id=' . strval($trace_id) . ', error=' . strval($error_message));
+        error_log('[Tamiro connector][validate_with_kaigen] Response: code=' . intval($code) . ', valid=' . (isset($body['valid']) ? var_export($body['valid'], true) : 'null') . ', project_id=' . strval($project_id) . ', platform_id=' . strval($platform_id) . ', trace_id=' . strval($trace_id) . ', error=' . strval($error_message));
 
         if ($code !== 200) {
             return array(
@@ -159,11 +159,11 @@ class Kaigen_Auth {
         $existing_project_id = isset($settings['project_id']) ? strval($settings['project_id']) : '';
         if ($enforce_project_guard && !empty($existing_project_id) && !empty($resolved_project_id) && $existing_project_id !== $resolved_project_id) {
             $mismatch_error = sprintf(
-                __('API key belongs to another Kaigen project (expected %1$s, got %2$s). Please paste the dedicated key generated for this project.', 'kaigen-connector'),
+                __('API key belongs to another Tamiro project (expected %1$s, got %2$s). Please paste the dedicated key generated for this project.', 'kaigen-connector'),
                 $existing_project_id,
                 $resolved_project_id
             );
-            error_log('[Kaigen connector][validate_with_kaigen] Project mismatch: existing=' . $existing_project_id . ', resolved=' . $resolved_project_id);
+            error_log('[Tamiro connector][validate_with_kaigen] Project mismatch: existing=' . $existing_project_id . ', resolved=' . $resolved_project_id);
             return array(
                 'valid' => false,
                 'error' => $mismatch_error
@@ -199,8 +199,8 @@ class Kaigen_Auth {
                 'Content-Type' => 'application/json'
             );
         } else {
-            // Application password - not used for outgoing requests to Kaigen
-            // This is for Kaigen to authenticate TO WordPress
+            // Application password - not used for outgoing requests to Tamiro
+            // This is for Tamiro to authenticate TO WordPress
             return array(
                 'Content-Type' => 'application/json'
             );
@@ -208,7 +208,7 @@ class Kaigen_Auth {
     }
 
     /**
-     * Verify incoming request from Kaigen
+     * Verify incoming request from Tamiro
      */
     public function verify_incoming_request() {
         $log_auth = defined('WP_DEBUG') && WP_DEBUG;
@@ -217,7 +217,7 @@ class Kaigen_Auth {
         if ($log_auth) {
             $has_auth = isset($_SERVER['HTTP_AUTHORIZATION']) || isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
             $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
-            error_log('[Kaigen connector][verify_incoming_request] Start auth_method=' . $auth_method . ', has_auth_header=' . ($has_auth ? 'yes' : 'no') . ', request_uri=' . $request_uri);
+            error_log('[Tamiro connector][verify_incoming_request] Start auth_method=' . $auth_method . ', has_auth_header=' . ($has_auth ? 'yes' : 'no') . ', request_uri=' . $request_uri);
         }
 
         // Always try API key auth first (works even if auth_method is app_password).
@@ -228,31 +228,31 @@ class Kaigen_Auth {
                 $stored_key = preg_replace('/\s+/', '', trim($stored_key));
                 if (hash_equals($stored_key, $provided_key)) {
                     if ($log_auth) {
-                        error_log('[Kaigen connector][verify_incoming_request] Authorized via API key header provided=' . $this->mask_key($provided_key) . ', stored=' . $this->mask_key($stored_key));
+                        error_log('[Tamiro connector][verify_incoming_request] Authorized via API key header provided=' . $this->mask_key($provided_key) . ', stored=' . $this->mask_key($stored_key));
                     }
                     return true;
                 }
                 if ($log_auth) {
-                    error_log('[Kaigen connector][verify_incoming_request] API key header mismatch provided=' . $this->mask_key($provided_key) . ', stored=' . $this->mask_key($stored_key));
+                    error_log('[Tamiro connector][verify_incoming_request] API key header mismatch provided=' . $this->mask_key($provided_key) . ', stored=' . $this->mask_key($stored_key));
                 }
             } elseif ($log_auth) {
-                error_log('[Kaigen connector][verify_incoming_request] Provided API key header but no stored key in settings');
+                error_log('[Tamiro connector][verify_incoming_request] Provided API key header but no stored key in settings');
             }
         } elseif ($log_auth) {
-            error_log('[Kaigen connector][verify_incoming_request] No API key found in headers');
+            error_log('[Tamiro connector][verify_incoming_request] No API key found in headers');
         }
 
         // Fallback for legacy app-password mode (authenticated WP user context).
         if ($auth_method === 'app_password') {
             $allowed = is_user_logged_in() && current_user_can('kaigen_edit_posts');
             if ($log_auth) {
-                error_log('[Kaigen connector][verify_incoming_request] App password fallback result=' . ($allowed ? 'true' : 'false'));
+                error_log('[Tamiro connector][verify_incoming_request] App password fallback result=' . ($allowed ? 'true' : 'false'));
             }
             return $allowed;
         }
 
         if ($log_auth) {
-            error_log('[Kaigen connector][verify_incoming_request] Authorization failed');
+            error_log('[Tamiro connector][verify_incoming_request] Authorization failed');
         }
 
         return false;

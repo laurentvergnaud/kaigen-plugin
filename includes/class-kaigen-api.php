@@ -1,7 +1,7 @@
 <?php
 /**
  * API Communication handler
- * Handles all communication with Kaigen API
+ * Handles all communication with Tamiro API
  */
 
 if (!defined('ABSPATH')) {
@@ -25,7 +25,7 @@ class Kaigen_API {
     }
 
     /**
-     * Make API request to Kaigen
+     * Make API request to Tamiro
      */
     public function request($endpoint, $method = 'GET', $data = null) {
         $api_url = $this->auth->get_api_url();
@@ -86,7 +86,7 @@ class Kaigen_API {
     }
 
     /**
-     * Send site structure to Kaigen
+     * Send site structure to Tamiro
      */
     public function send_site_structure($project_id) {
         $content_handler = Kaigen_Content::get_instance();
@@ -108,7 +108,7 @@ class Kaigen_API {
     }
 
     /**
-     * Send content library to Kaigen
+     * Send content library to Tamiro
      */
     public function send_content_library($project_id, $post_types = null) {
         $content_handler = Kaigen_Content::get_instance();
@@ -159,7 +159,7 @@ class Kaigen_API {
     }
 
     /**
-     * Test connection to Kaigen
+     * Test connection to Tamiro
      */
     public function test_connection($api_key = null, $api_url = null) {
         $has_override = !empty($api_key);
@@ -179,7 +179,7 @@ class Kaigen_API {
     }
 
     /**
-     * Sync content to Kaigen
+     * Sync content to Tamiro
      */
     public function sync_content($project_id = null) {
         if (!$project_id) {
@@ -216,7 +216,7 @@ class Kaigen_API {
     }
 
     /**
-     * Send batched sync events to Kaigen.
+     * Send batched sync events to Tamiro.
      */
     public function send_sync_events($project_id, $events, $mode = 'delta', $source = array()) {
         if (empty($project_id)) {
@@ -248,7 +248,7 @@ class Kaigen_API {
     }
 
     /**
-     * Forward one tracking event to Kaigen.
+     * Forward one tracking event to Tamiro.
      */
     public function send_tracking_event($event) {
         return $this->request('api/track', 'POST', $event);

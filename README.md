@@ -1,15 +1,15 @@
-# Kaigen Connector - WordPress Plugin
+# Tamiro Connector - WordPress Plugin
 
-Connect your WordPress site to Kaigen for AI-powered content generation and management.
+Connect your WordPress site to Tamiro for AI-powered content generation and management.
 
 ## Features
 
 - **Dual Authentication**: Support for both API Key and WordPress Application Password authentication
-- **Custom Post Types**: Select which post types to expose to Kaigen
+- **Custom Post Types**: Select which post types to expose to Tamiro
 - **Content Discovery**: Automatically detect and share your site structure, custom fields (ACF, Meta Box, Pods, CMB2), and editor type
-- **Bidirectional Sync**: Generate content in Kaigen and publish directly to WordPress, or update existing posts
-- **Editor Integration**: "Open in Kaigen" button in post editor for seamless editing
-- **Role-Based Permissions**: Configure which user roles can access Kaigen features
+- **Bidirectional Sync**: Generate content in Tamiro and publish directly to WordPress, or update existing posts
+- **Editor Integration**: "Open in Tamiro" button in post editor for seamless editing
+- **Role-Based Permissions**: Configure which user roles can access Tamiro features
 - **Audit Logs**: Track all synchronization activities
 
 ## Requirements
@@ -52,9 +52,9 @@ The uploaded asset name should start with `kaigen-connector` and end with `.zip`
 
 ### Method 1: API Key Authentication (Recommended)
 
-1. Go to **Settings > Kaigen Connector**
+1. Go to **Settings > Tamiro Connector**
 2. Select **API Key** as authentication method
-3. Log in to your Kaigen dashboard
+3. Log in to your Tamiro dashboard
 4. Navigate to WordPress Integration settings
 5. Generate a new API key
 6. Copy the API key (shown only once!)
@@ -64,41 +64,41 @@ The uploaded asset name should start with `kaigen-connector` and end with `.zip`
 
 ### Method 2: Application Password
 
-1. Go to **Settings > Kaigen Connector**
+1. Go to **Settings > Tamiro Connector**
 2. Select **Application Password** as authentication method
 3. Go to your WordPress profile
 4. Scroll to **Application Passwords**
-5. Create a new application password named "Kaigen"
+5. Create a new application password named "Tamiro"
 6. Copy the generated password
-7. Enter your username and password in Kaigen project settings
+7. Enter your username and password in Tamiro project settings
 8. Test the connection
 
 ## Usage
 
 ### Selecting Post Types
 
-1. Go to **Settings > Kaigen Connector > Post Types** tab
-2. Check the post types you want to expose to Kaigen
+1. Go to **Settings > Tamiro Connector > Post Types** tab
+2. Check the post types you want to expose to Tamiro
 3. Click **Save Changes**
 
 ### Setting Permissions
 
-1. Go to **Settings > Kaigen Connector > Permissions** tab
-2. Select which user roles can use Kaigen features
+1. Go to **Settings > Tamiro Connector > Permissions** tab
+2. Select which user roles can use Tamiro features
 3. Click **Save Changes**
 
 ### Syncing Content
 
-1. Go to **Settings > Kaigen Connector > Logs** tab
+1. Go to **Settings > Tamiro Connector > Logs** tab
 2. Click **Sync Content Now**
 3. Wait for the sync to complete
 4. View sync logs for details
 
-### Editing Posts in Kaigen
+### Editing Posts in Tamiro
 
 1. Open any post in WordPress editor
-2. Look for the **Kaigen** meta box in the sidebar (Gutenberg) or the **Open in Kaigen** button (Classic Editor)
-3. Click the button to open the post in Kaigen
+2. Look for the **Tamiro** meta box in the sidebar (Gutenberg) or the **Open in Tamiro** button (Classic Editor)
+3. Click the button to open the post in Tamiro
 4. Edit the content using AI-powered tools
 5. Save changes back to WordPress
 
@@ -182,10 +182,10 @@ add_action('kaigen_after_update', function($post_id, $result) {
 
 1. Verify your API key or application password is correct
 2. Check that your WordPress site is accessible via HTTPS
-3. Ensure no firewall is blocking requests from Kaigen
+3. Ensure no firewall is blocking requests from Tamiro
 4. Check WordPress error logs for details
 
-### "Open in Kaigen" Button Not Showing
+### "Open in Tamiro" Button Not Showing
 
 1. Verify the post type is enabled in settings
 2. Check that your user role has `kaigen_edit_posts` capability
@@ -233,7 +233,7 @@ GPL v2 or later
 
 ## Credits
 
-Developed by the Kaigen team.
+Developed by the Tamiro team.
 
 
 

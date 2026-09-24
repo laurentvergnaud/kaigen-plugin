@@ -489,11 +489,18 @@
       body: JSON.stringify(payload)
     }).then(function (response) {
       if (!response.ok) {
-        throw new Error('track_failed_' + response.status);
+        var error = new Error('track_failed_' + response.status);
+        error.status = response.status;
+        error.retryable = isRetryableStatus(response.status);
+        throw error;
       }
 
       return true;
     });
+  }
+
+  function isRetryableStatus(status) {
+    return status === 408 || status === 429 || status >= 500;
   }
 
   function flushQueue() {
@@ -508,8 +515,10 @@
           .then(function () {
             dequeue(eventPayload.event_id);
           })
-          .catch(function () {
-            // Keep item in queue for next page view.
+          .catch(function (error) {
+            if (error && error.retryable === false) {
+              dequeue(eventPayload.event_id);
+            }
           });
       })(queue[i]);
     }
@@ -522,8 +531,10 @@
     }
 
     send(payload)
-      .catch(function () {
-        enqueue(payload);
+      .catch(function (error) {
+        if (!error || error.retryable !== false) {
+          enqueue(payload);
+        }
       })
       .then(function () {
         flushQueue();
@@ -543,8 +554,10 @@
     }
 
     send(payload, { preferBeacon: true })
-      .catch(function () {
-        enqueue(payload);
+      .catch(function (error) {
+        if (!error || error.retryable !== false) {
+          enqueue(payload);
+        }
       });
   }
 

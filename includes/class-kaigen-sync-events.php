@@ -2,7 +2,7 @@
 /**
  * WordPress sync events queue and flusher.
  *
- * Collects post lifecycle events asynchronously and pushes them to Kaigen in batches.
+ * Collects post lifecycle events asynchronously and pushes them to Tamiro in batches.
  */
 
 if (!defined('ABSPATH')) {

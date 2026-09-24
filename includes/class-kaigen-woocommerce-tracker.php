@@ -1,7 +1,7 @@
 <?php
 /**
  * WooCommerce tracker handler
- * Captures e-commerce conversions and forwards them to Kaigen.
+ * Captures e-commerce conversions and forwards them to Tamiro.
  */
 
 if (!defined('ABSPATH')) {

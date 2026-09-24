@@ -1,7 +1,7 @@
 <?php
 /**
  * Editor Button handler
- * Adds "Open in Kaigen" button to post editor
+ * Adds "Open in Tamiro" button to post editor
  */
 
 if (!defined('ABSPATH')) {
@@ -65,7 +65,7 @@ class Kaigen_Editor_Button {
             'wpUrl' => home_url(),
             'editorUrl' => $this->get_editor_url($post->ID),
             'strings' => array(
-                'openInKaigen' => __('Open in Kaigen', 'kaigen-connector'),
+                'openInKaigen' => __('Open in Tamiro', 'kaigen-connector'),
                 'loading' => __('Loading...', 'kaigen-connector')
             )
         ));
@@ -85,7 +85,7 @@ class Kaigen_Editor_Button {
 
         add_meta_box(
             'kaigen-editor-link',
-            __('Kaigen', 'kaigen-connector'),
+            __('Tamiro', 'kaigen-connector'),
             array($this, 'render_meta_box'),
             $enabled_types,
             'side',
@@ -100,12 +100,12 @@ class Kaigen_Editor_Button {
         $editor_url = $this->get_editor_url($post->ID);
         ?>
         <div class="kaigen-meta-box">
-            <p><?php _e('Edit this post in Kaigen for AI-powered content generation and optimization.', 'kaigen-connector'); ?></p>
+            <p><?php _e('Edit this post in Tamiro for AI-powered content generation and optimization.', 'kaigen-connector'); ?></p>
             <a href="<?php echo esc_url($editor_url); ?>"
                class="button button-primary button-large"
                target="_blank"
                rel="noopener noreferrer">
-                <?php _e('Open in Kaigen', 'kaigen-connector'); ?>
+                <?php _e('Open in Tamiro', 'kaigen-connector'); ?>
             </a>
         </div>
         <?php
@@ -152,7 +152,7 @@ class Kaigen_Editor_Button {
             if (typeof QTags !== 'undefined') {
                 QTags.addButton(
                     'kaigen_open',
-                    '<?php echo esc_js(__('Open in Kaigen', 'kaigen-connector')); ?>',
+                    '<?php echo esc_js(__('Open in Tamiro', 'kaigen-connector')); ?>',
                     function() {
                         window.open('<?php echo esc_js($editor_url); ?>', '_blank');
                     }
@@ -166,7 +166,7 @@ class Kaigen_Editor_Button {
                 'target="_blank" ' +
                 'rel="noopener noreferrer" ' +
                 'style="margin-left: 10px;">' +
-                '<?php echo esc_js(__('Open in Kaigen', 'kaigen-connector')); ?>' +
+                '<?php echo esc_js(__('Open in Tamiro', 'kaigen-connector')); ?>' +
                 '</a>'
             );
         });

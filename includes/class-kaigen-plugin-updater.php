@@ -90,7 +90,7 @@ class Kaigen_Plugin_Updater
         }
 
         error_log(
-            '[Kaigen connector][plugin_update] '
+            '[Tamiro connector][plugin_update] '
             . 'slug=' . KAIGEN_PLUGIN_SLUG
             . ' code=' . strval($code)
             . ' url=' . strval($url)

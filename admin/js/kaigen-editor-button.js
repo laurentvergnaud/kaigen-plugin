@@ -14,7 +14,7 @@ jQuery(document).ready(function($) {
                 PluginDocumentSettingPanel,
                 {
                     name: 'kaigen-editor-panel',
-                    title: 'Kaigen',
+                    title: 'Tamiro',
                     className: 'kaigen-editor-panel'
                 },
                 el(
@@ -23,7 +23,7 @@ jQuery(document).ready(function($) {
                     el(
                         'p',
                         {},
-                        'Edit this post in Kaigen for AI-powered content generation and optimization.'
+                        'Edit this post in Tamiro for AI-powered content generation and optimization.'
                     ),
                     el(
                         Button,

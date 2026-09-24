@@ -1,7 +1,7 @@
 <?php
 /**
  * Content Update handler
- * Handles updating WordPress posts from Kaigen
+ * Handles updating WordPress posts from Tamiro
  */
 
 if (!defined('ABSPATH')) {
@@ -24,7 +24,7 @@ class Kaigen_Update {
     }
 
     /**
-     * Handle v2 patch update request from Kaigen
+     * Handle v2 patch update request from Tamiro
      */
     public function handle_update_request($data) {
         if (!isset($data['post_id'])) {
@@ -81,7 +81,7 @@ class Kaigen_Update {
     }
 
     /**
-     * Handle creation request from Kaigen (canonical v2 document)
+     * Handle creation request from Tamiro (canonical v2 document)
      */
     public function handle_create_request($data) {
         if (!isset($data['schema_version']) || intval($data['schema_version']) !== 2) {
@@ -349,7 +349,7 @@ class Kaigen_Update {
 
             $inserted = wp_insert_post($insert_data, true);
             if (is_wp_error($inserted)) {
-                error_log('[Kaigen connector] Failed to create post from v2 document: post_id=0, content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $inserted->get_error_message());
+                error_log('[Tamiro connector] Failed to create post from v2 document: post_id=0, content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $inserted->get_error_message());
                 return $inserted;
             }
             $post_id = intval($inserted);
@@ -382,7 +382,7 @@ class Kaigen_Update {
 
             $result = wp_update_post($update_data, true);
             if (is_wp_error($result)) {
-                error_log('[Kaigen connector] Failed to update post from v2 document: post_id=' . $post_id . ', content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $result->get_error_message());
+                error_log('[Tamiro connector] Failed to update post from v2 document: post_id=' . $post_id . ', content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $result->get_error_message());
                 return $result;
             }
         }
@@ -495,7 +495,7 @@ class Kaigen_Update {
     }
 
     /**
-     * Persist Kaigen-owned structured data separately from post_content.
+     * Persist Tamiro-owned structured data separately from post_content.
      */
     private function update_structured_data_meta($post_id, $extensions) {
         if (!isset($extensions['kaigen']) || !is_array($extensions['kaigen'])) {
