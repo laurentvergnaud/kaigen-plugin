@@ -11,6 +11,8 @@ if (!defined('ABSPATH')) {
 class Kaigen_Update {
 
     private static $instance = null;
+    // The content of this request is the post's own with a fragment edited: written without the HTML filter.
+    private $raw_content_write = false;
 
     public static function get_instance() {
         if (null === self::$instance) {
@@ -50,6 +52,49 @@ class Kaigen_Update {
             return new WP_Error('insufficient_permissions', __('Insufficient permissions', 'kaigen-connector'), array('status' => 403));
         }
 
+        if (!$this->is_post_type_enabled($post->post_type)) {
+            return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
+        }
+
+        $scope_error = $this->validate_write_scope($data['changes'], $post->post_type);
+        if (is_wp_error($scope_error)) {
+            return $scope_error;
+        }
+
+        // The article as Tamiro read it (1.4.0, ADR 0064): modified since, nothing is written.
+        if (isset($data['expected_modified']) && $data['expected_modified'] !== null && $data['expected_modified'] !== '') {
+            $current_modified = get_post_modified_time('c', true, $post);
+            if (strtotime(strval($data['expected_modified'])) !== strtotime(strval($current_modified))) {
+                return new WP_Error('modified_since_read', __('The post changed since it was read', 'kaigen-connector'), array('status' => 409, 'modified' => $current_modified));
+            }
+        }
+
+        // Links and headings change a fragment of the content (1.4.0, ADR 0064): the content the post
+        // has, the fragment changed, written back without the HTML filter, which would strip from the
+        // rest of the post what a request without a user may not write (an iframe, a form).
+        $this->raw_content_write = false;
+        if (isset($data['changes']['links']) || isset($data['changes']['headings'])) {
+            if (isset($data['changes']['post']['content'])) {
+                return new WP_Error('content_and_edits', __('A request changes the content or edits a fragment of it, not both', 'kaigen-connector'), array('status' => 400));
+            }
+            $edited = $post->post_content;
+            if (isset($data['changes']['links']) && is_array($data['changes']['links'])) {
+                $edited = Kaigen_Content_Edits::apply_links($edited, $data['changes']['links']);
+            }
+            if (!is_wp_error($edited) && isset($data['changes']['headings']) && is_array($data['changes']['headings'])) {
+                $edited = Kaigen_Content_Edits::apply_headings($edited, $data['changes']['headings']);
+            }
+            if (is_wp_error($edited)) {
+                return $edited;
+            }
+            unset($data['changes']['links'], $data['changes']['headings']);
+            if (!isset($data['changes']['post']) || !is_array($data['changes']['post'])) {
+                $data['changes']['post'] = array();
+            }
+            $data['changes']['post']['content'] = $edited;
+            $this->raw_content_write = true;
+        }
+
         $content = Kaigen_Content::get_instance();
         $project_id = isset($data['project_id']) ? strval($data['project_id']) : '';
         $platform_id = isset($data['platform_id']) ? strval($data['platform_id']) : null;
@@ -67,7 +112,10 @@ class Kaigen_Update {
             return $validation_error;
         }
 
-        $persist_error = $this->persist_document($post_id, $merged_document);
+        // Only what the request changes is written. The merged document holds every meta of the post
+        // as WordPress stores it, serialized, and writing it all back serialized another plugin's
+        // arrays a second time (YARPP's yarpp_meta on a client site, seen 2026-10-06).
+        $persist_error = $this->persist_document($post_id, $data['changes']);
         if (is_wp_error($persist_error)) {
             return $persist_error;
         }
@@ -107,6 +155,11 @@ class Kaigen_Update {
         $validation_error = $this->validate_merged_document($data);
         if (is_wp_error($validation_error)) {
             return $validation_error;
+        }
+
+        $scope_error = $this->validate_write_scope($data, sanitize_key($data['post']['post_type']));
+        if (is_wp_error($scope_error)) {
+            return $scope_error;
         }
 
         $created_post_id = $this->persist_document(0, $data, true);
@@ -159,6 +212,93 @@ class Kaigen_Update {
         }
 
         return $user->has_cap($post_type_obj->cap->edit_posts);
+    }
+
+    /**
+     * Whether the site exposes this post type to Tamiro (Post Types tab of the settings).
+     */
+    private function is_post_type_enabled($post_type) {
+        $settings = get_option('kaigen_settings', array());
+        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+
+        return in_array($post_type, $enabled_types, true);
+    }
+
+    /**
+     * SEO plugins keep their fields in meta WordPress protects (a leading underscore).
+     */
+    private function is_seo_meta_key($meta_key) {
+        return strpos($meta_key, '_yoast_wpseo_') === 0
+            || strpos($meta_key, 'rank_math_') === 0
+            || strpos($meta_key, '_seopress_') === 0;
+    }
+
+    /**
+     * What a Tamiro key may write (security audit 2026-10-05). A request carrying the key runs
+     * without a WordPress user, so no capability check applies to it; these rules stand in for one.
+     * Checked on what the request writes, before anything is written; a refusal names what it refused.
+     */
+    private function validate_write_scope($document, $post_type) {
+        $post_type_object = get_post_type_object($post_type);
+        if (!$post_type_object) {
+            return $this->write_scope_error('invalid_post_type', sprintf(__('Unknown post type: %s', 'kaigen-connector'), $post_type));
+        }
+
+        $post = isset($document['post']) && is_array($document['post']) ? $document['post'] : array();
+        if (isset($post['author']) && is_array($post['author']) && isset($post['author']['id'])) {
+            $author_id = intval($post['author']['id']);
+            if ($author_id <= 0 || !user_can($author_id, $post_type_object->cap->edit_posts)) {
+                return $this->write_scope_error('invalid_post_author', sprintf(__('User %d cannot edit this post type', 'kaigen-connector'), $author_id));
+            }
+        }
+
+        $custom_fields = isset($document['custom_fields']) && is_array($document['custom_fields']) ? $document['custom_fields'] : array();
+        $meta_keys = isset($custom_fields['meta']) && is_array($custom_fields['meta']) ? array_keys($custom_fields['meta']) : array();
+        $acf_keys = isset($custom_fields['acf']) && is_array($custom_fields['acf']) ? array_keys($custom_fields['acf']) : array();
+
+        if (function_exists('update_field')) {
+            foreach ($acf_keys as $field_key) {
+                if (!function_exists('acf_get_field') || !acf_get_field($field_key)) {
+                    return $this->write_scope_error('unknown_acf_field', sprintf(__('Unknown ACF field: %s', 'kaigen-connector'), $field_key));
+                }
+            }
+        } else {
+            // Without ACF, update_custom_fields writes them as plain post meta.
+            $meta_keys = array_merge($meta_keys, $acf_keys);
+        }
+
+        foreach ($meta_keys as $meta_key) {
+            $meta_key = strval($meta_key);
+            $is_protected = is_protected_meta($meta_key, 'post') || is_protected_meta(sanitize_key($meta_key), 'post');
+            if ($is_protected && !$this->is_seo_meta_key(sanitize_key($meta_key))) {
+                return $this->write_scope_error('protected_meta_key', sprintf(__('Protected meta key: %s', 'kaigen-connector'), $meta_key));
+            }
+        }
+
+        $seo = isset($document['seo']) && is_array($document['seo']) ? $document['seo'] : array();
+        if (isset($seo['raw_meta']) && is_array($seo['raw_meta'])) {
+            foreach (array_keys($seo['raw_meta']) as $meta_key) {
+                if (!$this->is_seo_meta_key(sanitize_key(strval($meta_key)))) {
+                    return $this->write_scope_error('invalid_seo_meta_key', sprintf(__('Not an SEO meta key: %s', 'kaigen-connector'), $meta_key));
+                }
+            }
+        }
+
+        $taxonomies = isset($document['taxonomies']) && is_array($document['taxonomies']) ? $document['taxonomies'] : array();
+        foreach ($taxonomies as $taxonomy => $value) {
+            if ($value === null) {
+                continue;
+            }
+            if (!is_object_in_taxonomy($post_type, $taxonomy)) {
+                return $this->write_scope_error('invalid_taxonomy', sprintf(__('Taxonomy %1$s is not attached to %2$s', 'kaigen-connector'), $taxonomy, $post_type));
+            }
+        }
+
+        return true;
+    }
+
+    private function write_scope_error($code, $message) {
+        return new WP_Error($code, $message, array('status' => 422));
     }
 
     /**
@@ -380,10 +520,21 @@ class Kaigen_Update {
                 $update_data['post_author'] = intval($post_data['author']['id']);
             }
 
-            $result = wp_update_post($update_data, true);
-            if (is_wp_error($result)) {
-                error_log('[Tamiro connector] Failed to update post from v2 document: post_id=' . $post_id . ', content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $result->get_error_message());
-                return $result;
+            // wp_update_post saves the whole post again, its content through the HTML filter of a
+            // request without a user: it runs only when the request changes a field of the post.
+            if (count($update_data) > 1) {
+                if ($this->raw_content_write) {
+                    kses_remove_filters();
+                }
+                $result = wp_update_post($update_data, true);
+                if ($this->raw_content_write) {
+                    kses_init_filters();
+                    $this->raw_content_write = false;
+                }
+                if (is_wp_error($result)) {
+                    error_log('[Tamiro connector] Failed to update post from v2 document: post_id=' . $post_id . ', content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $result->get_error_message());
+                    return $result;
+                }
             }
         }
 

@@ -181,16 +181,6 @@ class Kaigen_Tracker
                 'title' => $validated['title'],
                 'language' => $validated['language'],
                 'path' => $validated['path'],
-                'contactEmail' => $validated['contact_email'],
-                'contactPhone' => $validated['contact_phone'],
-                'contactFirstName' => $validated['contact_first_name'],
-                'contactLastName' => $validated['contact_last_name'],
-                'form' => array(
-                    'action' => $validated['form_action'],
-                    'method' => $validated['form_method'],
-                    'id' => $validated['form_id'],
-                    'name' => $validated['form_name'],
-                ),
                 'source' => array(
                     'sourceAutomationId' => $validated['source_automation_id'],
                     'sourceAutomationItemId' => $validated['source_automation_item_id'],
@@ -253,8 +243,13 @@ class Kaigen_Tracker
             $happened_at = gmdate('c');
         }
 
+        // Pageviews only since 1.3.0 (security audit 2026-10-05): the form capture read every field
+        // of every form, and Tamiro refuses form events since 2026-10-06.
         $event_type = isset($payload['event_type']) ? sanitize_key($payload['event_type']) : 'pageview';
-        if (!in_array($event_type, array('pageview', 'form_submit'), true)) {
+        if ($event_type === 'form_submit') {
+            return new WP_Error('kaigen_track_forms_disabled', __('Form submission tracking is disabled', 'kaigen-connector'), array('status' => 410));
+        }
+        if ($event_type !== 'pageview') {
             $event_type = 'pageview';
         }
         $payload_version = isset($payload['payload_version']) ? sanitize_text_field($payload['payload_version']) : '';
@@ -270,14 +265,6 @@ class Kaigen_Tracker
         $utm_campaign = isset($payload['utm_campaign']) ? sanitize_text_field($payload['utm_campaign']) : null;
         $title = isset($payload['title']) ? sanitize_text_field($payload['title']) : null;
         $language = isset($payload['language']) ? sanitize_text_field($payload['language']) : null;
-        $form_action = isset($payload['form_action']) ? esc_url_raw($payload['form_action']) : null;
-        $form_method = isset($payload['form_method']) ? sanitize_text_field($payload['form_method']) : null;
-        $form_id = isset($payload['form_id']) ? sanitize_text_field($payload['form_id']) : null;
-        $form_name = isset($payload['form_name']) ? sanitize_text_field($payload['form_name']) : null;
-        $contact_email_raw = isset($payload['contact_email']) ? sanitize_email($payload['contact_email']) : null;
-        $contact_phone_raw = isset($payload['contact_phone']) ? sanitize_text_field($payload['contact_phone']) : null;
-        $contact_first_name = isset($payload['contact_first_name']) ? sanitize_text_field($payload['contact_first_name']) : null;
-        $contact_last_name = isset($payload['contact_last_name']) ? sanitize_text_field($payload['contact_last_name']) : null;
         $source_automation_id = isset($payload['source_automation_id']) ? sanitize_text_field($payload['source_automation_id']) : null;
         $source_automation_item_id = isset($payload['source_automation_item_id']) ? sanitize_text_field($payload['source_automation_item_id']) : null;
         $source_term_id = isset($payload['source_term_id']) ? sanitize_text_field($payload['source_term_id']) : null;
@@ -285,8 +272,6 @@ class Kaigen_Tracker
         $source_post_id = isset($payload['source_post_id']) ? sanitize_text_field($payload['source_post_id']) : null;
         $source_post_type = isset($payload['source_post_type']) ? sanitize_text_field($payload['source_post_type']) : null;
         $source_post_slug = isset($payload['source_post_slug']) ? sanitize_text_field($payload['source_post_slug']) : null;
-        $contact_email = $this->is_valid_email($contact_email_raw) ? $contact_email_raw : null;
-        $contact_phone = $this->normalize_phone($contact_phone_raw);
 
         return array(
             'event_id' => $event_id,
@@ -303,14 +288,6 @@ class Kaigen_Tracker
             'utm_campaign' => $this->truncate_or_null($utm_campaign, 255),
             'title' => $this->truncate_or_null($title, 255),
             'language' => $this->truncate_or_null($language, 24),
-            'form_action' => $this->truncate_or_null($form_action, 2048),
-            'form_method' => $this->truncate_or_null($form_method ? strtoupper($form_method) : null, 16),
-            'form_id' => $this->truncate_or_null($form_id, 128),
-            'form_name' => $this->truncate_or_null($form_name, 128),
-            'contact_email' => $this->truncate_or_null($contact_email, 255),
-            'contact_phone' => $this->truncate_or_null($contact_phone, 32),
-            'contact_first_name' => $this->truncate_or_null($contact_first_name, 120),
-            'contact_last_name' => $this->truncate_or_null($contact_last_name, 120),
             'source_automation_id' => $this->truncate_or_null($source_automation_id, 64),
             'source_automation_item_id' => $this->truncate_or_null($source_automation_item_id, 64),
             'source_term_id' => $this->truncate_or_null($source_term_id, 64),
@@ -532,33 +509,5 @@ class Kaigen_Tracker
         }
 
         return substr($value, 0, $max_length);
-    }
-
-    private function is_valid_email($email)
-    {
-        if (!is_string($email) || $email === '') {
-            return false;
-        }
-
-        return (bool) filter_var($email, FILTER_VALIDATE_EMAIL);
-    }
-
-    private function normalize_phone($phone)
-    {
-        if (!is_string($phone) || $phone === '') {
-            return null;
-        }
-
-        if (!preg_match('/(?:\\+?\\d[\\d().\\s-]{6,}\\d)/', $phone, $matches)) {
-            return null;
-        }
-
-        $cleaned = preg_replace('/[^\\d+]/', '', $matches[0]);
-        $digits = preg_replace('/[^\\d]/', '', $cleaned);
-        if (!is_string($digits) || strlen($digits) < 8 || strlen($digits) > 16) {
-            return null;
-        }
-
-        return $cleaned;
     }
 }

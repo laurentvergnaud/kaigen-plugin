@@ -37,8 +37,6 @@
   var COOKIE_SOURCE_POST_TYPE = 'kaigen_source_post_type';
   var COOKIE_SOURCE_POST_SLUG = 'kaigen_source_post_slug';
   var TRACK_PAYLOAD_VERSION = 'wp_tracker_v1';
-  var EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
-  var PHONE_REGEX = /(?:\+?\d[\d().\s-]{6,}\d)/;
 
   function nowMs() {
     return Date.now();
@@ -361,106 +359,8 @@
     };
   }
 
-  function normalizePhone(raw) {
-    if (!raw || typeof raw !== 'string') {
-      return null;
-    }
-
-    var cleaned = raw.replace(/[^\d+]/g, '');
-    var digits = cleaned.replace(/[^\d]/g, '');
-    if (digits.length < 8 || digits.length > 16) {
-      return null;
-    }
-
-    return cleaned.slice(0, 32);
-  }
-
-  function normalizeName(raw) {
-    if (!raw || typeof raw !== 'string') {
-      return null;
-    }
-
-    var cleaned = raw.replace(/[^\p{L}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim();
-    if (!cleaned) {
-      return null;
-    }
-
-    return cleaned.slice(0, 120);
-  }
-
-  function detectContactDetails(form) {
-    var contact = {
-      email: null,
-      phone: null,
-      first_name: null,
-      last_name: null
-    };
-
-    if (!form || typeof FormData === 'undefined') {
-      return contact;
-    }
-
-    var formData = new FormData(form);
-    formData.forEach(function (value, key) {
-      if (typeof value !== 'string') {
-        return;
-      }
-
-      var candidate = value.trim();
-      if (!candidate) {
-        return;
-      }
-
-      if (!contact.email) {
-        var emailMatch = candidate.match(EMAIL_REGEX);
-        if (emailMatch && emailMatch[0]) {
-          contact.email = emailMatch[0].slice(0, 255);
-        }
-      }
-
-      if (!contact.phone) {
-        var phoneMatch = candidate.match(PHONE_REGEX);
-        if (phoneMatch && phoneMatch[0]) {
-          contact.phone = normalizePhone(phoneMatch[0]);
-        }
-      }
-
-      var normalizedKey = String(key || '').toLowerCase();
-      if (!contact.first_name && (normalizedKey.indexOf('prenom') !== -1 || normalizedKey.indexOf('first_name') !== -1 || normalizedKey.indexOf('firstname') !== -1 || normalizedKey.indexOf('given_name') !== -1)) {
-        contact.first_name = normalizeName(candidate);
-      }
-
-      if (!contact.last_name && (normalizedKey.indexOf('nom') !== -1 || normalizedKey.indexOf('last_name') !== -1 || normalizedKey.indexOf('lastname') !== -1 || normalizedKey.indexOf('family_name') !== -1 || normalizedKey.indexOf('surname') !== -1)) {
-        contact.last_name = normalizeName(candidate);
-      }
-    });
-
-    return contact;
-  }
-
   function buildPageviewPayload() {
     return getBasePayload('pageview');
-  }
-
-  function buildFormSubmitPayload(form) {
-    var basePayload = getBasePayload('form_submit');
-    if (!basePayload) {
-      return null;
-    }
-
-    var contact = detectContactDetails(form);
-    var actionUrl = sanitizeUrl((form && form.getAttribute && form.getAttribute('action')) || '') || basePayload.page_url;
-
-    basePayload.form_action = actionUrl;
-    basePayload.form_method = form && form.method ? String(form.method).toUpperCase().slice(0, 16) : 'GET';
-    basePayload.form_id = form && form.id ? String(form.id).slice(0, 128) : null;
-    basePayload.form_name = form && form.name ? String(form.name).slice(0, 128) : null;
-    basePayload.contact_email = contact.email;
-    basePayload.contact_phone = contact.phone;
-    basePayload.contact_first_name = contact.first_name;
-    basePayload.contact_last_name = contact.last_name;
-
-    return basePayload;
   }
 
   function send(payload, options) {
@@ -541,31 +441,12 @@
       });
   }
 
-  function trackFormSubmit(event) {
-    var target = event && event.target ? event.target : null;
-    var form = target && target.closest ? target.closest('form') : null;
-    if (!form || form.nodeName !== 'FORM') {
-      return;
-    }
-
-    var payload = buildFormSubmitPayload(form);
-    if (!payload) {
-      return;
-    }
-
-    send(payload, { preferBeacon: true })
-      .catch(function (error) {
-        if (!error || error.retryable !== false) {
-          enqueue(payload);
-        }
-      });
-  }
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', trackPageview, { once: true });
   } else {
     trackPageview();
   }
 
-  document.addEventListener('submit', trackFormSubmit, true);
+  // Pageviews only since 1.3.0: the form capture read every field of every form, hidden ones
+  // included, and Tamiro refuses form events since 2026-10-06 (security audit).
 })();

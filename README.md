@@ -108,11 +108,33 @@ The plugin registers the following REST API endpoints:
 
 - `GET /wp-json/kaigen/v1/structure` - Get site structure
 - `GET /wp-json/kaigen/v1/content` - Get content library
+- `POST /wp-json/kaigen/v1/content` - Create post
 - `GET /wp-json/kaigen/v1/content/{id}` - Get specific post
-- `POST /wp-json/kaigen/v1/content/{id}` - Update post
+- `POST /wp-json/kaigen/v1/content/{id}` - Update post (a v2 patch)
+- `POST /wp-json/kaigen/v1/media/import` - Import a remote image into the media library
 - `GET /wp-json/kaigen/v1/links` - Get internal linking candidates
+- `POST /wp-json/kaigen/v1/track` - Relay a tracker pageview (signed token, no key)
+- `GET /wp-json/kaigen/v1/schema` - Schema templates and the SEO plugin's schema settings per post type (1.4.0)
+- `POST /wp-json/kaigen/v1/schema/templates` - Save or delete schema templates (1.4.0)
+- `POST /wp-json/kaigen/v1/schema/settings` - Set the schema type of a post type in Yoast or Rank Math, closed lists (1.4.0)
+- `POST /wp-json/kaigen/v1/schema/assign` - Name a template on posts, `_kaigen_schema_template` (1.4.0)
+- `GET /wp-json/kaigen/v1/schema/samples` - A few posts of a scope with their custom fields and terms (1.4.0)
+- `POST /wp-json/kaigen/v1/schema/preview` - The node a template prints on given posts, nothing saved (1.4.0)
+- `POST /wp-json/kaigen/v1/resolve` - The posts behind addresses: their type and terms (1.4.0)
 
-All endpoints require authentication via API key or application password.
+All endpoints but `track` require authentication via API key or application password.
+
+A request authenticated by the API key runs without a WordPress user, so no capability check applies to it. Since 1.3.0 (security audit 2026-10-05, `validate_write_scope` of `includes/class-kaigen-update.php`), what it may write is bounded, and a refusal answers `403` or `422` naming what it refused:
+
+- read, list, create and update only the post types enabled in the **Post Types** tab;
+- no meta WordPress protects (a leading underscore), except the SEO plugins' keys (`_yoast_wpseo_*`, `rank_math_*`, `_seopress_*`); `seo.raw_meta` holds SEO keys only; with ACF active, only fields ACF knows;
+- an author only if that user can edit the post type, terms only of the taxonomies of the post type.
+
+An update writes only the fields its patch changes. Up to 1.2.x it wrote back the whole merged document: every meta of the post, read serialized, was serialized a second time (another plugin's arrays broke), and `wp_update_post` ran even for a meta-only change, passing the content through the HTML filter of a request without a user.
+
+Since 1.4.0 (ADR 0064) an update may carry `expected_modified`, the post's `modified_gmt` as Tamiro read it: when the post changed since, nothing is written (`409`). Its changes may hold `links` (`text`, `sentence`, `href`: the words of a paragraph's or a list's text get the link, never inside a heading, a link or code) and `headings` (`text`, `action` `demote` or `remove`: an H1 of the content, its Gutenberg block included), all or nothing (`422` naming the one not found); the content is cut into its tags and texts, the fragment changed, the rest written back unchanged, without WordPress's HTML filter, which would strip from the rest of the post what a request without a user may not write (`includes/class-kaigen-content-edits.php`). Schema templates (`includes/class-kaigen-schema.php`, option `kaigen_schema_templates`, a post's own in `_kaigen_schema_template`) are rendered on every page view from the post's data (`post:`, `meta:` but never a protected one, `acf:`, `term:`, `const:` sources), nothing printed when a required property is missing; the node joins Yoast's graph (`wpseo_schema_graph`) or Rank Math's (`rank_math/json_ld`), never beside a node of its family, else the plugin prints its own graph; the automations' JSON-LD (`_kaigen_structured_data_json`) joins the same graph under the same rule.
+
+The tracker (`public/js/kaigen-tracker.js`) sends pageviews only since 1.3.0; it read every field of every submitted form, hidden ones included, and Tamiro refuses form events since 2026-10-06.
 
 ## Supported Plugins
 

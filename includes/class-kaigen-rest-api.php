@@ -95,6 +95,105 @@ class Kaigen_REST_API
             'callback' => array($this, 'get_links'),
             'permission_callback' => array($this, 'check_permission')
         ));
+
+        // Schema templates and the SEO plugin's schema settings (1.4.0, ADR 0064)
+        register_rest_route($this->namespace, '/schema', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_schema'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+        register_rest_route($this->namespace, '/schema/templates', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'save_schema_templates'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+        register_rest_route($this->namespace, '/schema/settings', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'save_schema_setting'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+        register_rest_route($this->namespace, '/schema/assign', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'assign_schema_template'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+        register_rest_route($this->namespace, '/schema/samples', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_schema_samples'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+        register_rest_route($this->namespace, '/schema/preview', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'preview_schema_template'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+
+        // The posts behind addresses (1.4.0, ADR 0064)
+        register_rest_route($this->namespace, '/resolve', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'resolve_urls'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+    }
+
+    public function get_schema($request)
+    {
+        $schema = Kaigen_Schema::get_instance();
+        return rest_ensure_response(array('templates' => $schema->templates(), 'seo' => $schema->seo_settings()));
+    }
+
+    public function save_schema_templates($request)
+    {
+        $data = $request->get_json_params();
+        $templates = isset($data['templates']) && is_array($data['templates']) ? $data['templates'] : array();
+        $delete = isset($data['delete']) && is_array($data['delete']) ? $data['delete'] : array();
+        $result = Kaigen_Schema::get_instance()->save_templates($templates, $delete);
+        return is_wp_error($result) ? $result : rest_ensure_response($result);
+    }
+
+    public function save_schema_setting($request)
+    {
+        $data = $request->get_json_params();
+        $post_type = isset($data['post_type']) ? strval($data['post_type']) : '';
+        $values = isset($data['values']) && is_array($data['values']) ? $data['values'] : array();
+        $result = Kaigen_Schema::get_instance()->set_seo_setting($post_type, $values);
+        return is_wp_error($result) ? $result : rest_ensure_response($result);
+    }
+
+    public function assign_schema_template($request)
+    {
+        $data = $request->get_json_params();
+        $template_id = isset($data['template_id']) && $data['template_id'] !== null ? sanitize_key($data['template_id']) : null;
+        $post_ids = isset($data['post_ids']) && is_array($data['post_ids']) ? $data['post_ids'] : array();
+        $result = Kaigen_Schema::get_instance()->assign_template($template_id, $post_ids);
+        return is_wp_error($result) ? $result : rest_ensure_response(array('assigned' => $result));
+    }
+
+    public function get_schema_samples($request)
+    {
+        $result = Kaigen_Schema::get_instance()->samples(
+            strval($request->get_param('post_type') ?: ''),
+            strval($request->get_param('taxonomy') ?: ''),
+            strval($request->get_param('term') ?: ''),
+            intval($request->get_param('limit') ?: 3)
+        );
+        return is_wp_error($result) ? $result : rest_ensure_response(array('samples' => $result));
+    }
+
+    public function preview_schema_template($request)
+    {
+        $data = $request->get_json_params();
+        $template = isset($data['template']) ? $data['template'] : null;
+        $post_ids = isset($data['post_ids']) && is_array($data['post_ids']) ? $data['post_ids'] : array();
+        $result = Kaigen_Schema::get_instance()->preview($template, $post_ids);
+        return is_wp_error($result) ? $result : rest_ensure_response(array('previews' => $result));
+    }
+
+    public function resolve_urls($request)
+    {
+        $data = $request->get_json_params();
+        $urls = isset($data['urls']) && is_array($data['urls']) ? $data['urls'] : array();
+        return rest_ensure_response(array('resolved' => Kaigen_Schema::get_instance()->resolve_urls($urls)));
     }
 
     /**

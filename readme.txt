@@ -4,7 +4,7 @@ Tags: ai, content, seo, automation, integration
 Requires at least: 6.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -83,6 +83,20 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.4.0 =
+* An update may carry the date Tamiro read the post: when the post changed since, nothing is written (409)
+* Tamiro places an internal link on words a paragraph or a list already holds, and demotes or removes an H1 of a post's content; the rest of the content is written back unchanged
+* Schema templates: Article, Service, FAQ and Event, filled on every page view from the post's own data, applied to a post type, a post type and a term, or to chosen posts; joined to Yoast's or Rank Math's graph, never as a second node of a kind the graph has
+* Tamiro reads and sets the schema type of a post type in Yoast and Rank Math
+* The JSON-LD of Tamiro's automations joins the SEO plugin's graph: a post no longer carries two Article nodes
+
+= 1.3.0 =
+* A Tamiro key writes only to the post types enabled in the settings; it cannot write meta WordPress protects (SEO plugin fields excepted), set an author who cannot edit the post type, or use a taxonomy the post type does not have
+* An update writes only the fields Tamiro changes; it no longer rewrites the other meta of the post
+* The tracker counts pageviews only: form submissions are no longer read
+* Internal links list only the enabled post types
+* JSON-LD is escaped inside its script tag (1.2.1, never released on its own)
+
 = 1.2.0 =
 * Kaigen is now Tamiro: plugin name, settings, editor button and messages
 * New installations point to https://app.tamiro.ai; an existing API URL is kept
@@ -98,6 +112,12 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 * Audit logging
 
 == Upgrade Notice ==
+
+= 1.4.0 =
+Internal links, heading fixes and schema templates approved in Tamiro, written by the plugin.
+
+= 1.3.0 =
+Security update: a narrower write scope for the Tamiro key, updates that write only what changed, no more form capture.
 
 = 1.2.0 =
 Kaigen is now Tamiro. Your settings and connection are kept.

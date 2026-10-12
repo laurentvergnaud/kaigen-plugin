@@ -26,26 +26,32 @@ class Kaigen_Structured_Data {
         add_action('wp_head', array($this, 'inject_structured_data'), 20);
     }
 
+    /**
+     * The JSON-LD items an automation stored on a post, valid ones only.
+     */
+    public function items_for_post($post_id) {
+        if (!$post_id || !$this->is_enabled_for_post($post_id)) {
+            return array();
+        }
+        $raw_json = get_post_meta($post_id, self::META_JSON, true);
+        $items = $this->normalize_items($raw_json, $this->get_max_bytes($post_id));
+        $items = apply_filters('kaigen_structured_data_items', $items, $post_id);
+        return is_array($items) ? $this->filter_valid_items($items) : array();
+    }
+
     public function inject_structured_data() {
         if (!is_singular()) {
             return;
         }
 
+        // With Yoast or Rank Math the items join their graph (Kaigen_Schema, 1.4.0), and an Article the
+        // graph already has is not printed a second time (77 pages carried two on 2026-10-07).
+        if (in_array(Kaigen_Content::get_instance()->detect_seo_plugin(), array('yoast', 'rankmath'), true)) {
+            return;
+        }
+
         $post_id = get_queried_object_id();
-        if (!$post_id || !$this->is_enabled_for_post($post_id)) {
-            return;
-        }
-
-        $raw_json = get_post_meta($post_id, self::META_JSON, true);
-        $max_bytes = $this->get_max_bytes($post_id);
-        $items = $this->normalize_items($raw_json, $max_bytes);
-        $items = apply_filters('kaigen_structured_data_items', $items, $post_id);
-
-        if (!is_array($items)) {
-            return;
-        }
-
-        $items = $this->filter_valid_items($items);
+        $items = $this->items_for_post($post_id);
         if (empty($items)) {
             return;
         }
@@ -56,7 +62,9 @@ class Kaigen_Structured_Data {
                 $item['@id'] = rtrim($permalink, '#') . '#kaigen-schema-' . ($index + 1);
             }
 
-            $json = wp_json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            // JSON_HEX_TAG and JSON_HEX_AMP write < > & as \u003C \u003E \u0026: a value holding "</script" or
+            // "<!--" can no longer close the script tag and run in the page.
+            $json = wp_json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP);
             if (!$json) {
                 continue;
             }

@@ -528,8 +528,14 @@ class Kaigen_Content
         $settings = get_option('kaigen_settings', array());
         $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
 
+        // A requested type outside the enabled ones lists nothing (security audit 2026-10-05).
+        $post_types = $post_type ? array_values(array_intersect(array($post_type), $enabled_types)) : $enabled_types;
+        if (empty($post_types)) {
+            return array();
+        }
+
         $args = array(
-            'post_type' => $post_type ? $post_type : $enabled_types,
+            'post_type' => $post_types,
             'posts_per_page' => $limit,
             'post_status' => 'publish',
             'orderby' => 'date',

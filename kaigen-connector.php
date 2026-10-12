@@ -4,7 +4,7 @@
  * Plugin Name: Tamiro Connector
  * Plugin URI: https://app.tamiro.ai
  * Description: Connect your WordPress site to Tamiro for AI-powered content generation and management
- * Version: 1.2.0
+ * Version: 1.4.0
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Tamiro
  * Author URI: https://app.tamiro.ai
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.2.0');
+define('KAIGEN_VERSION', '1.4.0');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -71,7 +71,9 @@ class Kaigen_Connector
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-api.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-content.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-structured-data.php';
+        require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-content-edits.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-update.php';
+        require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-schema.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-admin.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-rest-api.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-tracker.php';
@@ -139,6 +141,7 @@ class Kaigen_Connector
         Kaigen_Editor_Button::get_instance();
         Kaigen_Sync_Events::get_instance();
         Kaigen_Structured_Data::get_instance();
+        Kaigen_Schema::get_instance();
 
         if ($this->should_init_woocommerce_tracker()) {
             require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-woocommerce-tracker.php';
