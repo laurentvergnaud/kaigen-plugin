@@ -180,6 +180,24 @@ class Kaigen_Admin
                     $auth = Kaigen_Auth::get_instance();
                     $sanitized['api_key'] = $auth->encrypt_value($normalized_api_key);
                     $sanitized['project_id'] = '';
+
+                    // A key saved by this form is activated as the activation button does: until 1.4.0
+                    // it left the project unlinked, and the tracker off, until that button was clicked.
+                    $result = Kaigen_API::get_instance()->test_connection($normalized_api_key, $sanitized['api_url']);
+                    if (is_wp_error($result)) {
+                        add_settings_error(
+                            'kaigen_settings',
+                            'activation_failed',
+                            sprintf(
+                                /* translators: %s: the reason Tamiro gave */
+                                __('The API key was saved, but Tamiro did not activate it: %s', 'kaigen-connector'),
+                                $result->get_error_message()
+                            ),
+                            'error'
+                        );
+                    } elseif (!empty($result['project_id'])) {
+                        $sanitized = $this->apply_activation_result($sanitized, $result);
+                    }
                 }
             }
             // If empty or placeholder, we keep $sanitized['api_key'] which is already $existing['api_key']
@@ -685,13 +703,7 @@ class Kaigen_Admin
             if (!empty($api_url_for_test)) {
                 $settings['api_url'] = $api_url_for_test;
             }
-            $settings['project_id'] = sanitize_text_field($result['project_id']);
-            if (!empty($result['tracking_public_key']) && is_string($result['tracking_public_key'])) {
-                $settings['tracking_public_key'] = sanitize_text_field($result['tracking_public_key']);
-                unset($settings['tracking_public_key_attempted_at']);
-                unset($settings['tracking_public_key_error']);
-                unset($settings['tracking_public_key_retry_count']);
-            }
+            $settings = $this->apply_activation_result($settings, $result);
             $updated = update_option('kaigen_settings', $settings);
             $stored_after = $auth_instance->get_api_key();
             error_log('[Tamiro connector][ajax_test_connection] Saved project_id=' . strval($result['project_id']) . ', update_option=' . ($updated ? 'true' : 'false') . ', key_before=' . $this->mask_api_key_for_logs($stored_before) . ', key_submitted=' . $this->mask_api_key_for_logs($api_key_for_test) . ', key_after=' . $this->mask_api_key_for_logs($stored_after));
@@ -699,6 +711,21 @@ class Kaigen_Admin
 
         error_log('[Tamiro connector][ajax_test_connection] Success payload=' . wp_json_encode($result));
         wp_send_json_success($result);
+    }
+
+    /**
+     * The project and tracking key a successful activation links, on the settings to save.
+     */
+    private function apply_activation_result($settings, $result)
+    {
+        $settings['project_id'] = sanitize_text_field($result['project_id']);
+        if (!empty($result['tracking_public_key']) && is_string($result['tracking_public_key'])) {
+            $settings['tracking_public_key'] = sanitize_text_field($result['tracking_public_key']);
+            unset($settings['tracking_public_key_attempted_at']);
+            unset($settings['tracking_public_key_error']);
+            unset($settings['tracking_public_key_retry_count']);
+        }
+        return $settings;
     }
 
     private function mask_api_key_for_logs($value)

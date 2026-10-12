@@ -4,7 +4,7 @@
  * Plugin Name: Tamiro Connector
  * Plugin URI: https://app.tamiro.ai
  * Description: Connect your WordPress site to Tamiro for AI-powered content generation and management
- * Version: 1.4.0
+ * Version: 1.4.1
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Tamiro
  * Author URI: https://app.tamiro.ai
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.4.0');
+define('KAIGEN_VERSION', '1.4.1');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));

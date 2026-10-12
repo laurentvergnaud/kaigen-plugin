@@ -49,6 +49,11 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     $status.html('<span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> ' + kaigenAdmin.strings.success);
+
+                    // The page shows what was saved: the linked project, the stored key behind its placeholder.
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1000);
                 } else {
                     var message = response && response.data && response.data.message ? escapeHtml(response.data.message) : '';
                     $status.html('<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' + kaigenAdmin.strings.error + ' ' + message);

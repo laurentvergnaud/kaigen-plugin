@@ -4,7 +4,7 @@ Tags: ai, content, seo, automation, integration
 Requires at least: 6.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -83,6 +83,10 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.4.1 =
+* « Save Changes » with a new API key activates it as « Save and activate Tamiro » does: the project is linked and site tracking starts, or the page says why Tamiro refused the key
+* After a successful activation the settings page reloads and shows the linked project; a key left in the field no longer unlinked the project at the next save
+
 = 1.4.0 =
 * An update may carry the date Tamiro read the post: when the post changed since, nothing is written (409)
 * Tamiro places an internal link on words a paragraph or a list already holds, and demotes or removes an H1 of a post's content; the rest of the content is written back unchanged
@@ -112,6 +116,9 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 * Audit logging
 
 == Upgrade Notice ==
+
+= 1.4.1 =
+Saving a new API key links the Tamiro project without a separate activation.
 
 = 1.4.0 =
 Internal links, heading fixes and schema templates approved in Tamiro, written by the plugin.
