@@ -22,8 +22,10 @@ class Kaigen_Tracker
     private static $instance = null;
     private $namespace = 'kaigen/v1';
 
-    const SCRIPT_ROUTE = '/m\.js';
-    const SCRIPT_PATH = '/m.js';
+    // No file extension on the route (1.6.1): a host's web server treats `/m.js` as a static file
+    // and answers 404 before WordPress (seen on Faaaster hosting on 2026-10-16).
+    const SCRIPT_ROUTE = '/m/script';
+    const SCRIPT_PATH = '/m/script';
     const HOST_PATH = '/m';
     const COLLECT_ROUTE = '/m/api/send';
     const SCRIPT_TRANSIENT = 'kaigen_measure_script';
@@ -36,6 +38,8 @@ class Kaigen_Tracker
     const GOALS_PATH = '/m/goals';
     const GOALS_OPTION = 'kaigen_measure_goals';
     const GOALS_TTL = HOUR_IN_SECONDS;
+    // While no rule is stored, read again sooner: a goal just validated in Tamiro should count within minutes.
+    const GOALS_TTL_EMPTY = 10 * MINUTE_IN_SECONDS;
     const GOALS_REPORT_LOCK = 'kaigen_goals_report_lock';
     const GOALS_REPORT_MIN_SECONDS = 10 * MINUTE_IN_SECONDS;
 
@@ -123,8 +127,8 @@ class Kaigen_Tracker
     }
 
     /**
-     * The goals the client validated, as Tamiro last gave them, read again every hour; on a
-     * failure the last ones stand until the next hour.
+     * The goals the client validated, as Tamiro last gave them, read again every hour, every ten
+     * minutes while none is stored; on a failure the last ones stand until the next read.
      */
     private function goals()
     {
@@ -133,7 +137,8 @@ class Kaigen_Tracker
             $stored = array();
         }
         $fetched_at = isset($stored['fetched_at']) ? (int) $stored['fetched_at'] : 0;
-        if ($fetched_at > 0 && (time() - $fetched_at) < self::GOALS_TTL) {
+        $ttl = empty($stored['goals']) ? self::GOALS_TTL_EMPTY : self::GOALS_TTL;
+        if ($fetched_at > 0 && (time() - $fetched_at) < $ttl) {
             return $stored;
         }
         return $this->refresh_goals(array(), $stored);
