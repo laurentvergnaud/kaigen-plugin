@@ -83,6 +83,10 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.6.2 =
+* The measurement goals validated in Tamiro reach the site at once: Tamiro pushes the rules (`POST /wp-json/kaigen/v1/measure/goals`, with the plugin key); the hourly read stays for a site unreachable at that moment.
+* The measurement script is written as a file under uploads (`kaigen/m.js`) and served by the web server without PHP; the REST route only stands in when the file cannot be written.
+
 = 1.6.1 =
 * The measurement script is served on `/wp-json/kaigen/v1/m/script`: a host's web server answered 404 on the `.js` route before WordPress, so the tag was never posed there.
 * The goal rules are read every ten minutes while none is posed, so a goal validated in Tamiro counts within minutes.
@@ -127,6 +131,9 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 * Audit logging
 
 == Upgrade Notice ==
+
+= 1.6.2 =
+The goals validated in Tamiro count within the minute; the measurement script no longer costs a PHP request.
 
 = 1.6.1 =
 The measurement tag is served on a route without extension; update if the site's tag never appeared.

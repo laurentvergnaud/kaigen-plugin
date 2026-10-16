@@ -8,8 +8,10 @@
  * URL come from Tamiro, read once and kept in the settings; the plugin never decides them.
  * The native tracker of the versions before (pageviews sent to Tamiro's own tables) is gone.
  * Since 1.6.0 the plugin also poses the measurement goals the client validated in Tamiro: the
- * capture rules are read with the configuration, refreshed every hour, printed for
- * `public/js/kaigen-goals.js`, and what that script finds on a page is told back to Tamiro.
+ * capture rules are pushed by Tamiro at each decision (`POST /measure/goals`, 1.6.2) and read again
+ * every hour, printed for `public/js/kaigen-goals.js`, and what that script finds on a page is
+ * told back to Tamiro. Since 1.6.2 the tracker is written as a file under uploads, served by the
+ * web server without PHP; the REST route only stands in when the file cannot be written.
  */
 
 if (!defined('ABSPATH')) {
@@ -38,8 +40,9 @@ class Kaigen_Tracker
     const GOALS_PATH = '/m/goals';
     const GOALS_OPTION = 'kaigen_measure_goals';
     const GOALS_TTL = HOUR_IN_SECONDS;
-    // While no rule is stored, read again sooner: a goal just validated in Tamiro should count within minutes.
-    const GOALS_TTL_EMPTY = 10 * MINUTE_IN_SECONDS;
+    const GOALS_PUSH_ROUTE = '/measure/goals';
+    const SCRIPT_FILE_DIR = 'kaigen';
+    const SCRIPT_FILE_NAME = 'm.js';
     const GOALS_REPORT_LOCK = 'kaigen_goals_report_lock';
     const GOALS_REPORT_MIN_SECONDS = 10 * MINUTE_IN_SECONDS;
 
@@ -80,6 +83,38 @@ class Kaigen_Tracker
             'callback' => array($this, 'report_goals'),
             'permission_callback' => '__return_true',
         ));
+        register_rest_route($this->namespace, self::GOALS_PUSH_ROUTE, array(
+            'methods' => 'POST',
+            'callback' => array($this, 'receive_goals'),
+            'permission_callback' => array($this, 'check_permission'),
+        ));
+    }
+
+    /**
+     * Tamiro's own calls, authenticated like the publication routes.
+     */
+    public function check_permission()
+    {
+        return Kaigen_Auth::get_instance()->verify_incoming_request();
+    }
+
+    /**
+     * The active rules pushed by Tamiro at each decision (1.6.2): the whole list replaces the stored
+     * one at once, instead of waiting for the hourly read.
+     */
+    public function receive_goals($request)
+    {
+        $body = json_decode($request->get_body(), true);
+        if (!is_array($body) || !isset($body['goals']) || !is_array($body['goals'])) {
+            return new WP_Error('kaigen_goals_bad_payload', __('Invalid payload', 'kaigen-connector'), array('status' => 400));
+        }
+        $next = array(
+            'goals' => $this->sanitize_goals($body['goals']),
+            'version' => isset($body['version']) && is_string($body['version']) ? sanitize_text_field($body['version']) : '',
+            'fetched_at' => time(),
+        );
+        update_option(self::GOALS_OPTION, $next, false);
+        return new WP_REST_Response(array('stored' => count($next['goals']), 'version' => $next['version']), 200);
     }
 
     /**
@@ -100,7 +135,7 @@ class Kaigen_Tracker
             return;
         }
 
-        $script = rest_url($this->namespace . self::SCRIPT_PATH);
+        $script = $this->script_url($config);
         $host = untrailingslashit(rest_url($this->namespace . self::HOST_PATH));
 
         printf(
@@ -127,8 +162,8 @@ class Kaigen_Tracker
     }
 
     /**
-     * The goals the client validated, as Tamiro last gave them, read again every hour, every ten
-     * minutes while none is stored; on a failure the last ones stand until the next read.
+     * The goals the client validated, as Tamiro last gave them: pushed by Tamiro at each decision
+     * (`receive_goals`), read again every hour; on a failure the last ones stand until the next read.
      */
     private function goals()
     {
@@ -137,8 +172,7 @@ class Kaigen_Tracker
             $stored = array();
         }
         $fetched_at = isset($stored['fetched_at']) ? (int) $stored['fetched_at'] : 0;
-        $ttl = empty($stored['goals']) ? self::GOALS_TTL_EMPTY : self::GOALS_TTL;
-        if ($fetched_at > 0 && (time() - $fetched_at) < $ttl) {
+        if ($fetched_at > 0 && (time() - $fetched_at) < self::GOALS_TTL) {
             return $stored;
         }
         return $this->refresh_goals(array(), $stored);
@@ -305,7 +339,58 @@ class Kaigen_Tracker
     }
 
     /**
-     * Umami's tracker, read on the instance once a day and served from here.
+     * Umami's tracker as a file under uploads (1.6.2), rewritten once a day, served by the web
+     * server without PHP; when the file cannot be written, the REST route serves it instead.
+     */
+    private function script_url($config)
+    {
+        $upload = wp_upload_dir();
+        if (!empty($upload['error']) || empty($upload['basedir']) || empty($upload['baseurl'])) {
+            return rest_url($this->namespace . self::SCRIPT_PATH);
+        }
+        $dir = trailingslashit($upload['basedir']) . self::SCRIPT_FILE_DIR;
+        $file = $dir . '/' . self::SCRIPT_FILE_NAME;
+        $url = trailingslashit($upload['baseurl']) . self::SCRIPT_FILE_DIR . '/' . self::SCRIPT_FILE_NAME;
+        $mtime = file_exists($file) ? (int) filemtime($file) : 0;
+        if ($mtime > 0 && (time() - $mtime) < self::SCRIPT_TTL && filesize($file) > 0) {
+            return $url;
+        }
+        $script = $this->read_script($config);
+        if (!is_string($script)) {
+            return $mtime > 0 ? $url : rest_url($this->namespace . self::SCRIPT_PATH);
+        }
+        if (!wp_mkdir_p($dir) || file_put_contents($file, $script) === false) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- a cached copy of Umami's tracker, next to the media.
+            return rest_url($this->namespace . self::SCRIPT_PATH);
+        }
+        return $url;
+    }
+
+    /**
+     * Umami's tracker read on the instance, kept a day in a transient.
+     */
+    private function read_script($config)
+    {
+        $script = get_transient(self::SCRIPT_TRANSIENT);
+        if (is_string($script) && $script !== '') {
+            return $script;
+        }
+        $response = wp_remote_get($config['base_url'] . '/script.js', array(
+            'timeout' => 10,
+            'user-agent' => 'Tamiro WordPress plugin ' . KAIGEN_VERSION,
+        ));
+        if (is_wp_error($response) || (int) wp_remote_retrieve_response_code($response) !== 200) {
+            return null;
+        }
+        $script = wp_remote_retrieve_body($response);
+        if (!is_string($script) || $script === '') {
+            return null;
+        }
+        set_transient(self::SCRIPT_TRANSIENT, $script, self::SCRIPT_TTL);
+        return $script;
+    }
+
+    /**
+     * Umami's tracker served from here, for a site whose uploads cannot be written.
      */
     public function serve_script()
     {
@@ -314,20 +399,9 @@ class Kaigen_Tracker
             return new WP_Error('kaigen_measure_not_configured', __('Measurement is not configured', 'kaigen-connector'), array('status' => 404));
         }
 
-        $script = get_transient(self::SCRIPT_TRANSIENT);
-        if (!is_string($script) || $script === '') {
-            $response = wp_remote_get($config['base_url'] . '/script.js', array(
-                'timeout' => 10,
-                'user-agent' => 'Tamiro WordPress plugin ' . KAIGEN_VERSION,
-            ));
-            if (is_wp_error($response) || (int) wp_remote_retrieve_response_code($response) !== 200) {
-                return new WP_Error('kaigen_measure_script_unavailable', __('The measurement script could not be read', 'kaigen-connector'), array('status' => 503));
-            }
-            $script = wp_remote_retrieve_body($response);
-            if (!is_string($script) || $script === '') {
-                return new WP_Error('kaigen_measure_script_unavailable', __('The measurement script could not be read', 'kaigen-connector'), array('status' => 503));
-            }
-            set_transient(self::SCRIPT_TRANSIENT, $script, self::SCRIPT_TTL);
+        $script = $this->read_script($config);
+        if (!is_string($script)) {
+            return new WP_Error('kaigen_measure_script_unavailable', __('The measurement script could not be read', 'kaigen-connector'), array('status' => 503));
         }
 
         return new WP_REST_Response($script, 200);
