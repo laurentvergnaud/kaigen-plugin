@@ -83,6 +83,13 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.6.0 =
+* The measurement goals the client validated in Tamiro are posed on the site: a page reached, a click, a form sent, each counted as one named event; what the page holds for each rule is told back to Tamiro (`/m/goals`).
+
+= 1.5.0 =
+* Audience measurement: the plugin serves the measurement script Tamiro runs (Umami) under the site's own domain and relays the visits to it, first-party; the website and the instance come from Tamiro
+* The native tracker (pageviews sent to Tamiro, `/wp-json/kaigen/v1/track`) is removed; the WooCommerce events are not sent until the next version
+
 = 1.4.1 =
 * « Save Changes » with a new API key activates it as « Save and activate Tamiro » does: the project is linked and site tracking starts, or the page says why Tamiro refused the key
 * After a successful activation the settings page reloads and shows the linked project; a key left in the field no longer unlinked the project at the next save
@@ -116,6 +123,12 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 * Audit logging
 
 == Upgrade Notice ==
+
+= 1.6.0 =
+The conversions asked in Tamiro are counted on the site; nothing to configure.
+
+= 1.5.0 =
+Audience measurement served by the site and relayed to Tamiro's measurement; the native tracker is removed.
 
 = 1.4.1 =
 Saving a new API key links the Tamiro project without a separate activation.

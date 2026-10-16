@@ -4,7 +4,7 @@
  * Plugin Name: Tamiro Connector
  * Plugin URI: https://app.tamiro.ai
  * Description: Connect your WordPress site to Tamiro for AI-powered content generation and management
- * Version: 1.4.1
+ * Version: 1.6.0
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Tamiro
  * Author URI: https://app.tamiro.ai
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.4.1');
+define('KAIGEN_VERSION', '1.6.0');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -142,35 +142,9 @@ class Kaigen_Connector
         Kaigen_Sync_Events::get_instance();
         Kaigen_Structured_Data::get_instance();
         Kaigen_Schema::get_instance();
-
-        if ($this->should_init_woocommerce_tracker()) {
-            require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-woocommerce-tracker.php';
-            Kaigen_WooCommerce_Tracker::get_instance();
-        }
-    }
-
-    /**
-     * Only enable WooCommerce tracker when Woo is available and tracking is configured.
-     */
-    private function should_init_woocommerce_tracker()
-    {
-        if (!class_exists('WooCommerce')) {
-            return false;
-        }
-
-        $settings = get_option('kaigen_settings', array());
-        $tracking_enabled = !isset($settings['tracking_enabled']) || (int) $settings['tracking_enabled'] === 1;
-        if (!$tracking_enabled) {
-            return false;
-        }
-
-        $project_id = isset($settings['project_id']) ? sanitize_text_field($settings['project_id']) : '';
-        if (empty($project_id)) {
-            return false;
-        }
-
-        $auth = Kaigen_Auth::get_instance();
-        return (bool) $auth->get_api_key();
+        // The WooCommerce tracker (includes/class-kaigen-woocommerce-tracker.php) is not started
+        // since 1.5.0: its events went to Tamiro's native tracking, retired (ADR 0075); they come
+        // back as Umami goals in the next lot.
     }
 
     /**

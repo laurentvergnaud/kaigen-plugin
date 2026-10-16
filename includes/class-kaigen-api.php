@@ -86,6 +86,27 @@ class Kaigen_API {
     }
 
     /**
+     * The audience measurement configuration (1.5.0): the Umami website Tamiro created for the
+     * project and the instance to relay to.
+     */
+    public function get_measure_config() {
+        return $this->request('api/wordpress/umami-config', 'POST', array(
+            'wpUrl' => home_url()
+        ));
+    }
+
+    /**
+     * What a page found for each measurement goal (1.6.0, ADR 0104); the answer carries the goals
+     * the client validated and their version.
+     */
+    public function report_goal_matches($matches) {
+        return $this->request('api/wordpress/umami-goals', 'POST', array(
+            'wpUrl' => home_url(),
+            'matches' => is_array($matches) ? array_values($matches) : array(),
+        ));
+    }
+
+    /**
      * Send site structure to Tamiro
      */
     public function send_site_structure($project_id) {

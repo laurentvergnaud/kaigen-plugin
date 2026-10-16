@@ -96,26 +96,32 @@ class Kaigen_Admin
                 $sanitized['tracking_enabled'] = (int) $input['tracking_enabled'] === 1 ? 1 : 0;
             }
 
-            if (isset($input['tracking_public_key'])) {
-                $sanitized['tracking_public_key'] = sanitize_text_field((string) $input['tracking_public_key']);
+            // The measurement configuration (1.5.0): the Umami website and instance Tamiro gives
+            // the site, and the state of the last attempt to read them.
+            if (isset($input['umami_website_id'])) {
+                $sanitized['umami_website_id'] = sanitize_text_field((string) $input['umami_website_id']);
             }
 
-            if (isset($input['tracking_public_key_attempted_at'])) {
-                $sanitized['tracking_public_key_attempted_at'] = sanitize_text_field((string) $input['tracking_public_key_attempted_at']);
-            } elseif (array_key_exists('tracking_public_key_attempted_at', $input) && $input['tracking_public_key_attempted_at'] === null) {
-                unset($sanitized['tracking_public_key_attempted_at']);
+            if (isset($input['umami_base_url'])) {
+                $sanitized['umami_base_url'] = esc_url_raw((string) $input['umami_base_url']);
             }
 
-            if (isset($input['tracking_public_key_error'])) {
-                $sanitized['tracking_public_key_error'] = sanitize_text_field((string) $input['tracking_public_key_error']);
-            } elseif (array_key_exists('tracking_public_key_error', $input) && $input['tracking_public_key_error'] === null) {
-                unset($sanitized['tracking_public_key_error']);
+            if (isset($input['umami_config_attempted_at'])) {
+                $sanitized['umami_config_attempted_at'] = sanitize_text_field((string) $input['umami_config_attempted_at']);
+            } elseif (array_key_exists('umami_config_attempted_at', $input) && $input['umami_config_attempted_at'] === null) {
+                unset($sanitized['umami_config_attempted_at']);
             }
 
-            if (isset($input['tracking_public_key_retry_count'])) {
-                $sanitized['tracking_public_key_retry_count'] = max(0, (int) $input['tracking_public_key_retry_count']);
-            } elseif (array_key_exists('tracking_public_key_retry_count', $input) && $input['tracking_public_key_retry_count'] === null) {
-                unset($sanitized['tracking_public_key_retry_count']);
+            if (isset($input['umami_config_error'])) {
+                $sanitized['umami_config_error'] = sanitize_text_field((string) $input['umami_config_error']);
+            } elseif (array_key_exists('umami_config_error', $input) && $input['umami_config_error'] === null) {
+                unset($sanitized['umami_config_error']);
+            }
+
+            if (isset($input['umami_config_retry_count'])) {
+                $sanitized['umami_config_retry_count'] = max(0, (int) $input['umami_config_retry_count']);
+            } elseif (array_key_exists('umami_config_retry_count', $input) && $input['umami_config_retry_count'] === null) {
+                unset($sanitized['umami_config_retry_count']);
             }
 
             if (isset($input['structured_data_injection_enabled'])) {
@@ -368,36 +374,36 @@ class Kaigen_Admin
         $api_url = isset($settings['api_url']) ? $settings['api_url'] : 'https://app.tamiro.ai';
         $tracking_enabled = !isset($settings['tracking_enabled']) || (int) $settings['tracking_enabled'] === 1;
         $project_id = isset($settings['project_id']) ? $settings['project_id'] : '';
-        $tracking_public_key = isset($settings['tracking_public_key']) ? $settings['tracking_public_key'] : '';
-        $tracking_public_key_error = isset($settings['tracking_public_key_error']) ? $settings['tracking_public_key_error'] : '';
-        $tracking_public_key_retry_count = isset($settings['tracking_public_key_retry_count']) ? max(0, (int) $settings['tracking_public_key_retry_count']) : 0;
-        $tracking_public_key_max_retries = defined('Kaigen_Tracker::TRACKING_PUBLIC_KEY_MAX_RETRIES') ? Kaigen_Tracker::TRACKING_PUBLIC_KEY_MAX_RETRIES : 10;
+        $umami_website_id = isset($settings['umami_website_id']) ? $settings['umami_website_id'] : '';
+        $umami_config_error = isset($settings['umami_config_error']) ? $settings['umami_config_error'] : '';
+        $umami_config_retry_count = isset($settings['umami_config_retry_count']) ? max(0, (int) $settings['umami_config_retry_count']) : 0;
+        $umami_config_max_retries = defined('Kaigen_Tracker::CONFIG_MAX_RETRIES') ? Kaigen_Tracker::CONFIG_MAX_RETRIES : 10;
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="authentication">
-        <?php if ($tracking_enabled && !empty($project_id) && empty($tracking_public_key) && !empty($tracking_public_key_error)): ?>
+        <?php if ($tracking_enabled && !empty($project_id) && empty($umami_website_id) && !empty($umami_config_error)): ?>
             <div class="notice notice-error inline">
                 <p>
-                    <strong><?php _e('Site tracking is not active.', 'kaigen-connector'); ?></strong>
-                    <?php _e('Tamiro could not retrieve the public tracking key required by the frontend tracker.', 'kaigen-connector'); ?>
+                    <strong><?php _e('The audience measurement is not active.', 'kaigen-connector'); ?></strong>
+                    <?php _e('Tamiro could not give the plugin its measurement configuration.', 'kaigen-connector'); ?>
                 </p>
                 <p>
                     <?php
                     printf(
                         /* translators: 1: retry count, 2: retry limit */
                         esc_html__('Automatic retry attempts: %1$d/%2$d.', 'kaigen-connector'),
-                        (int) $tracking_public_key_retry_count,
-                        (int) $tracking_public_key_max_retries
+                        (int) $umami_config_retry_count,
+                        (int) $umami_config_max_retries
                     );
                     ?>
-                    <?php if ($tracking_public_key_retry_count >= $tracking_public_key_max_retries): ?>
-                        <?php _e('Automatic retries have stopped. Use "Save and activate Tamiro" after fixing the issue to request a new key.', 'kaigen-connector'); ?>
+                    <?php if ($umami_config_retry_count >= $umami_config_max_retries): ?>
+                        <?php _e('Automatic retries have stopped. Use "Save and activate Tamiro" after fixing the issue to ask again.', 'kaigen-connector'); ?>
                     <?php else: ?>
                         <?php _e('The plugin will retry automatically, or you can use "Save and activate Tamiro" to retry now.', 'kaigen-connector'); ?>
                     <?php endif; ?>
                 </p>
                 <p>
                     <strong><?php _e('Last error:', 'kaigen-connector'); ?></strong>
-                    <?php echo esc_html($tracking_public_key_error); ?>
+                    <?php echo esc_html($umami_config_error); ?>
                 </p>
             </div>
         <?php endif; ?>
@@ -484,9 +490,9 @@ class Kaigen_Admin
                 <td>
                     <label>
                         <input type="checkbox" name="kaigen_settings[tracking_enabled]" value="1" <?php checked($tracking_enabled); ?>>
-                        <?php _e('Enable first-party pageview tracking', 'kaigen-connector'); ?>
+                        <?php _e('Enable the audience measurement', 'kaigen-connector'); ?>
                     </label>
-                    <p class="description"><?php _e('When enabled, the plugin sends anonymous pageview events to Tamiro for journey analysis.', 'kaigen-connector'); ?></p>
+                    <p class="description"><?php _e('When enabled, the plugin serves the measurement script under this site and relays the anonymous visits to the measurement Tamiro runs for the project.', 'kaigen-connector'); ?></p>
                 </td>
             </tr>
         </table>
@@ -714,17 +720,15 @@ class Kaigen_Admin
     }
 
     /**
-     * The project and tracking key a successful activation links, on the settings to save.
+     * The project a successful activation links, on the settings to save.
      */
     private function apply_activation_result($settings, $result)
     {
         $settings['project_id'] = sanitize_text_field($result['project_id']);
-        if (!empty($result['tracking_public_key']) && is_string($result['tracking_public_key'])) {
-            $settings['tracking_public_key'] = sanitize_text_field($result['tracking_public_key']);
-            unset($settings['tracking_public_key_attempted_at']);
-            unset($settings['tracking_public_key_error']);
-            unset($settings['tracking_public_key_retry_count']);
-        }
+        // A new activation asks the measurement configuration again (1.5.0).
+        unset($settings['umami_config_attempted_at']);
+        unset($settings['umami_config_error']);
+        unset($settings['umami_config_retry_count']);
         return $settings;
     }
 

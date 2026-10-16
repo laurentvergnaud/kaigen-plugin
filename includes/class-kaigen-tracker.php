@@ -1,7 +1,15 @@
 <?php
 /**
- * Frontend tracker handler
- * Captures first-party pageviews and forwards them to Tamiro through WordPress.
+ * Audience measurement handler (plugin 1.5.0, ADR 0075; goals since 1.6.0, ADR 0104).
+ *
+ * Tamiro measures the site with Umami, an instance Tamiro runs. The plugin serves Umami's tracker
+ * under the site's own domain and relays its collect calls to the instance, so that the measure is
+ * first-party: nothing on the page points at a measurement host. The website id and the instance
+ * URL come from Tamiro, read once and kept in the settings; the plugin never decides them.
+ * The native tracker of the versions before (pageviews sent to Tamiro's own tables) is gone.
+ * Since 1.6.0 the plugin also poses the measurement goals the client validated in Tamiro: the
+ * capture rules are read with the configuration, refreshed every hour, printed for
+ * `public/js/kaigen-goals.js`, and what that script finds on a page is told back to Tamiro.
  */
 
 if (!defined('ABSPATH')) {
@@ -13,11 +21,23 @@ class Kaigen_Tracker
 
     private static $instance = null;
     private $namespace = 'kaigen/v1';
-    const TRACK_PAYLOAD_VERSION = 'wp_tracker_v1';
 
+    const SCRIPT_ROUTE = '/m\.js';
+    const SCRIPT_PATH = '/m.js';
+    const HOST_PATH = '/m';
+    const COLLECT_ROUTE = '/m/api/send';
+    const SCRIPT_TRANSIENT = 'kaigen_measure_script';
+    const SCRIPT_TTL = DAY_IN_SECONDS;
     const RATE_LIMIT_PER_MINUTE = 120;
-    const TRACKING_PUBLIC_KEY_RETRY_SECONDS = 10 * MINUTE_IN_SECONDS;
-    const TRACKING_PUBLIC_KEY_MAX_RETRIES = 10;
+    const CONFIG_RETRY_SECONDS = 10 * MINUTE_IN_SECONDS;
+    const CONFIG_MAX_RETRIES = 10;
+    const RELAY_TIMEOUT = 5;
+    const GOALS_ROUTE = '/m/goals';
+    const GOALS_PATH = '/m/goals';
+    const GOALS_OPTION = 'kaigen_measure_goals';
+    const GOALS_TTL = HOUR_IN_SECONDS;
+    const GOALS_REPORT_LOCK = 'kaigen_goals_report_lock';
+    const GOALS_REPORT_MIN_SECONDS = 10 * MINUTE_IN_SECONDS;
 
     public static function get_instance()
     {
@@ -31,25 +51,37 @@ class Kaigen_Tracker
     private function __construct()
     {
         add_action('rest_api_init', array($this, 'register_routes'));
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_tracker_script'));
+        add_action('wp_head', array($this, 'print_tag'), 20);
+        add_filter('rest_pre_serve_request', array($this, 'serve_script_raw'), 10, 4);
     }
 
     /**
-     * Register public tracking route.
+     * The two public routes: the tracker script, and the collect endpoint Umami's script posts to
+     * (`data-host-url` + `/api/send`).
      */
     public function register_routes()
     {
-        register_rest_route($this->namespace, '/track', array(
+        register_rest_route($this->namespace, self::SCRIPT_ROUTE, array(
+            'methods' => 'GET',
+            'callback' => array($this, 'serve_script'),
+            'permission_callback' => '__return_true',
+        ));
+        register_rest_route($this->namespace, self::COLLECT_ROUTE, array(
             'methods' => 'POST',
-            'callback' => array($this, 'track_pageview'),
+            'callback' => array($this, 'relay'),
+            'permission_callback' => '__return_true',
+        ));
+        register_rest_route($this->namespace, self::GOALS_ROUTE, array(
+            'methods' => 'POST',
+            'callback' => array($this, 'report_goals'),
             'permission_callback' => '__return_true',
         ));
     }
 
     /**
-     * Enqueue frontend tracker script when tracking is enabled and plugin is linked.
+     * The tag on every public page: Umami's script served by this site, posting to this site.
      */
-    public function enqueue_tracker_script()
+    public function print_tag()
     {
         if (!$this->is_tracking_enabled()) {
             return;
@@ -59,284 +91,346 @@ class Kaigen_Tracker
             return;
         }
 
+        $config = $this->measure_config();
+        if (!$config) {
+            return;
+        }
+
+        $script = rest_url($this->namespace . self::SCRIPT_PATH);
+        $host = untrailingslashit(rest_url($this->namespace . self::HOST_PATH));
+
+        printf(
+            '<script defer src="%s" data-website-id="%s" data-host-url="%s"></script>' . "\n",
+            esc_url($script),
+            esc_attr($config['website_id']),
+            esc_url($host)
+        );
+
+        $goals = $this->goals();
+        if (empty($goals['goals'])) {
+            return;
+        }
+        $payload = array(
+            'goals' => $goals['goals'],
+            'version' => isset($goals['version']) ? (string) $goals['version'] : '',
+            'endpoint' => rest_url($this->namespace . self::GOALS_PATH),
+        );
+        printf(
+            '<script>window.kaigenGoals = %s;</script>' . "\n" . '<script defer src="%s"></script>' . "\n",
+            wp_json_encode($payload),
+            esc_url(KAIGEN_PLUGIN_URL . 'public/js/kaigen-goals.js?ver=' . rawurlencode(KAIGEN_VERSION . '-' . md5((string) $payload['version'])))
+        );
+    }
+
+    /**
+     * The goals the client validated, as Tamiro last gave them, read again every hour; on a
+     * failure the last ones stand until the next hour.
+     */
+    private function goals()
+    {
+        $stored = get_option(self::GOALS_OPTION, array());
+        if (!is_array($stored)) {
+            $stored = array();
+        }
+        $fetched_at = isset($stored['fetched_at']) ? (int) $stored['fetched_at'] : 0;
+        if ($fetched_at > 0 && (time() - $fetched_at) < self::GOALS_TTL) {
+            return $stored;
+        }
+        return $this->refresh_goals(array(), $stored);
+    }
+
+    /**
+     * Tell Tamiro what the page found for each rule, and take the rules it answers with.
+     */
+    private function refresh_goals($matches, $stored)
+    {
+        $api = Kaigen_API::get_instance();
+        $response = $api->report_goal_matches($matches);
+        $next = is_array($stored) ? $stored : array();
+        $next['fetched_at'] = time();
+        if (!is_wp_error($response) && is_array($response) && isset($response['goals']) && is_array($response['goals'])) {
+            $next['goals'] = $this->sanitize_goals($response['goals']);
+            $next['version'] = isset($response['version']) && is_string($response['version']) ? sanitize_text_field($response['version']) : '';
+        }
+        update_option(self::GOALS_OPTION, $next, false);
+        return $next;
+    }
+
+    private function sanitize_goals($goals)
+    {
+        $out = array();
+        foreach ($goals as $goal) {
+            if (!is_array($goal) || empty($goal['name']) || !is_string($goal['name']) || !preg_match('/^[a-z0-9][a-z0-9_]{0,63}$/', $goal['name'])) {
+                continue;
+            }
+            $kind = isset($goal['kind']) && is_string($goal['kind']) ? $goal['kind'] : '';
+            if (!in_array($kind, array('page_reached', 'click', 'form_submit'), true)) {
+                continue;
+            }
+            $rule = isset($goal['rule']) && is_array($goal['rule']) ? $goal['rule'] : array();
+            $clean = array();
+            foreach (array('urlPattern', 'text', 'hrefPattern', 'selector', 'formSelector') as $field) {
+                $clean[$field] = isset($rule[$field]) && is_string($rule[$field]) && $rule[$field] !== '' ? substr(wp_strip_all_tags($rule[$field]), 0, 500) : null;
+            }
+            $out[] = array('name' => $goal['name'], 'kind' => $kind, 'rule' => $clean);
+            if (count($out) >= 50) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * What a page found for each rule, from `kaigen-goals.js`: same origin, rate limited, passed to
+     * Tamiro at most once every ten minutes (a sighting lost is told again by the next session).
+     */
+    public function report_goals($request)
+    {
+        if (!$this->is_tracking_enabled()) {
+            return new WP_Error('kaigen_measure_disabled', __('Measurement is disabled', 'kaigen-connector'), array('status' => 403));
+        }
+        if (!$this->is_same_origin_request()) {
+            return new WP_Error('kaigen_measure_origin', __('Invalid request origin', 'kaigen-connector'), array('status' => 403));
+        }
+        if ($this->is_rate_limited()) {
+            return new WP_Error('kaigen_measure_rate_limited', __('Rate limit exceeded', 'kaigen-connector'), array('status' => 429));
+        }
+        $body = json_decode($request->get_body(), true);
+        $matches = array();
+        if (is_array($body) && isset($body['matches']) && is_array($body['matches'])) {
+            foreach ($body['matches'] as $match) {
+                if (!is_array($match) || empty($match['name']) || !is_string($match['name']) || !preg_match('/^[a-z0-9][a-z0-9_]{0,63}$/', $match['name'])) {
+                    continue;
+                }
+                $matches[] = array('name' => $match['name'], 'count' => isset($match['count']) ? max(0, (int) $match['count']) : 0);
+                if (count($matches) >= 100) {
+                    break;
+                }
+            }
+        }
+        if (empty($matches) || get_transient(self::GOALS_REPORT_LOCK)) {
+            return new WP_REST_Response(array('accepted' => false), 202);
+        }
+        set_transient(self::GOALS_REPORT_LOCK, 1, self::GOALS_REPORT_MIN_SECONDS);
+        $this->refresh_goals($matches, get_option(self::GOALS_OPTION, array()));
+        return new WP_REST_Response(array('accepted' => true), 200);
+    }
+
+    /**
+     * The website id and the instance URL, from the settings, or asked to Tamiro when missing.
+     */
+    private function measure_config()
+    {
         $settings = get_option('kaigen_settings', array());
         $project_id = isset($settings['project_id']) ? sanitize_text_field($settings['project_id']) : '';
-
         if (empty($project_id)) {
-            return;
+            return null;
         }
 
         $auth = Kaigen_Auth::get_instance();
         if (!$auth->get_api_key()) {
-            return;
+            return null;
         }
 
-        $tracking_public_key = isset($settings['tracking_public_key']) ? sanitize_text_field($settings['tracking_public_key']) : '';
-        if (empty($tracking_public_key)) {
-            $tracking_public_key = $this->load_tracking_public_key($settings);
+        $website_id = isset($settings['umami_website_id']) ? sanitize_text_field($settings['umami_website_id']) : '';
+        $base_url = isset($settings['umami_base_url']) ? esc_url_raw($settings['umami_base_url']) : '';
+        if (!empty($website_id) && !empty($base_url)) {
+            return array('website_id' => $website_id, 'base_url' => untrailingslashit($base_url));
         }
 
-        if (empty($tracking_public_key)) {
-            return;
-        }
-
-        $queried_post_id = function_exists('get_queried_object_id') ? (int) get_queried_object_id() : 0;
-        $wp_context = array(
-            'postId' => null,
-            'postType' => null,
-            'postSlug' => null,
-        );
-
-        if ($queried_post_id > 0) {
-            $wp_context['postId'] = (string) $queried_post_id;
-            $wp_context['postType'] = sanitize_text_field((string) get_post_type($queried_post_id));
-            $wp_context['postSlug'] = sanitize_title((string) get_post_field('post_name', $queried_post_id));
-        }
-
-        wp_enqueue_script(
-            'kaigen-tracker',
-            KAIGEN_PLUGIN_URL . 'public/js/kaigen-tracker.js',
-            array(),
-            KAIGEN_VERSION,
-            true
-        );
-
-        $api_url = $auth->get_api_url();
-
-        wp_localize_script('kaigen-tracker', 'kaigenTrackerConfig', array(
-            'endpoint' => trailingslashit($api_url) . 'api/track/public',
-            'projectId' => $project_id,
-            'trackingPublicKey' => $tracking_public_key,
-            'consentScope' => 'audience_only',
-            'sessionTtlMs' => 30 * MINUTE_IN_SECONDS * 1000,
-            'visitorTtlDays' => 395,
-            'wpContext' => $wp_context,
-        ));
+        return $this->load_measure_config($settings);
     }
 
     /**
-     * Receive and forward one tracking pageview.
+     * Ask Tamiro for the measurement configuration; a failure is retried a few times, ten minutes
+     * apart, then left alone until the settings change.
      */
-    public function track_pageview($request)
+    private function load_measure_config($settings)
+    {
+        if (!$this->should_retry_config($settings)) {
+            return null;
+        }
+
+        $api = Kaigen_API::get_instance();
+        $response = $api->get_measure_config();
+
+        $settings['umami_config_attempted_at'] = gmdate('c');
+
+        if (!is_wp_error($response) && !empty($response['websiteId']) && is_string($response['websiteId']) && !empty($response['baseUrl']) && is_string($response['baseUrl'])) {
+            $settings['umami_website_id'] = sanitize_text_field($response['websiteId']);
+            $settings['umami_base_url'] = esc_url_raw($response['baseUrl']);
+            unset($settings['umami_config_error']);
+            unset($settings['umami_config_attempted_at']);
+            unset($settings['umami_config_retry_count']);
+            delete_transient(self::SCRIPT_TRANSIENT);
+        } elseif (is_wp_error($response)) {
+            $settings['umami_config_error'] = $response->get_error_message();
+            $settings['umami_config_retry_count'] = $this->config_retry_count($settings) + 1;
+        } else {
+            $settings['umami_config_error'] = __('The measurement configuration was not returned by Tamiro', 'kaigen-connector');
+            $settings['umami_config_retry_count'] = $this->config_retry_count($settings) + 1;
+        }
+
+        update_option('kaigen_settings', $settings);
+
+        if (empty($settings['umami_website_id']) || empty($settings['umami_base_url'])) {
+            return null;
+        }
+
+        return array('website_id' => $settings['umami_website_id'], 'base_url' => untrailingslashit($settings['umami_base_url']));
+    }
+
+    private function should_retry_config($settings)
+    {
+        if ($this->config_retry_count($settings) >= self::CONFIG_MAX_RETRIES) {
+            return false;
+        }
+
+        $attempted_at = isset($settings['umami_config_attempted_at']) ? strtotime($settings['umami_config_attempted_at']) : false;
+        if ($attempted_at && (time() - $attempted_at) < self::CONFIG_RETRY_SECONDS) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function config_retry_count($settings)
+    {
+        return isset($settings['umami_config_retry_count']) ? (int) $settings['umami_config_retry_count'] : 0;
+    }
+
+    /**
+     * Umami's tracker, read on the instance once a day and served from here.
+     */
+    public function serve_script()
+    {
+        $config = $this->measure_config();
+        if (!$config) {
+            return new WP_Error('kaigen_measure_not_configured', __('Measurement is not configured', 'kaigen-connector'), array('status' => 404));
+        }
+
+        $script = get_transient(self::SCRIPT_TRANSIENT);
+        if (!is_string($script) || $script === '') {
+            $response = wp_remote_get($config['base_url'] . '/script.js', array(
+                'timeout' => 10,
+                'user-agent' => 'Tamiro WordPress plugin ' . KAIGEN_VERSION,
+            ));
+            if (is_wp_error($response) || (int) wp_remote_retrieve_response_code($response) !== 200) {
+                return new WP_Error('kaigen_measure_script_unavailable', __('The measurement script could not be read', 'kaigen-connector'), array('status' => 503));
+            }
+            $script = wp_remote_retrieve_body($response);
+            if (!is_string($script) || $script === '') {
+                return new WP_Error('kaigen_measure_script_unavailable', __('The measurement script could not be read', 'kaigen-connector'), array('status' => 503));
+            }
+            set_transient(self::SCRIPT_TRANSIENT, $script, self::SCRIPT_TTL);
+        }
+
+        return new WP_REST_Response($script, 200);
+    }
+
+    /**
+     * The script route answers JavaScript, not JSON: the REST server is asked to let the raw body through.
+     */
+    public function serve_script_raw($served, $result, $request, $server)
+    {
+        if ($served || !($request instanceof WP_REST_Request) || $request->get_route() !== '/' . $this->namespace . self::SCRIPT_PATH) {
+            return $served;
+        }
+        if (!($result instanceof WP_HTTP_Response)) {
+            return $served;
+        }
+        $data = $result->get_data();
+        if (!is_string($data)) {
+            return $served;
+        }
+
+        $server->send_header('Content-Type', 'application/javascript; charset=utf-8');
+        $server->send_header('Cache-Control', 'public, max-age=3600');
+        echo $data; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Umami's own script, served as read.
+
+        return true;
+    }
+
+    /**
+     * One collect call of Umami's script, passed to the instance with the visitor's address and
+     * browser (the session is their hash on Umami's side) and the session token both ways.
+     */
+    public function relay($request)
     {
         if (!$this->is_tracking_enabled()) {
-            return new WP_Error('kaigen_track_disabled', __('Tracking is disabled', 'kaigen-connector'), array('status' => 403));
+            return new WP_Error('kaigen_measure_disabled', __('Measurement is disabled', 'kaigen-connector'), array('status' => 403));
         }
 
         if (!$this->is_same_origin_request()) {
-            return new WP_Error('kaigen_track_origin', __('Invalid request origin', 'kaigen-connector'), array('status' => 403));
+            return new WP_Error('kaigen_measure_origin', __('Invalid request origin', 'kaigen-connector'), array('status' => 403));
         }
 
         if ($this->is_rate_limited()) {
-            return new WP_Error('kaigen_track_rate_limited', __('Rate limit exceeded', 'kaigen-connector'), array('status' => 429));
+            return new WP_Error('kaigen_measure_rate_limited', __('Rate limit exceeded', 'kaigen-connector'), array('status' => 429));
         }
 
-        $payload = $request->get_json_params();
-        if (!is_array($payload)) {
-            $raw_payload = $request->get_body();
-            if (is_string($raw_payload) && $raw_payload !== '') {
-                $decoded = json_decode($raw_payload, true);
-                if (is_array($decoded)) {
-                    $payload = $decoded;
-                }
-            }
-        }
-        if (!is_array($payload)) {
-            return new WP_Error('kaigen_track_bad_payload', __('Invalid JSON payload', 'kaigen-connector'), array('status' => 400));
+        $config = $this->measure_config();
+        if (!$config) {
+            return new WP_Error('kaigen_measure_not_configured', __('Measurement is not configured', 'kaigen-connector'), array('status' => 404));
         }
 
-        $settings = get_option('kaigen_settings', array());
-        $project_id = isset($settings['project_id']) ? sanitize_text_field($settings['project_id']) : '';
-
-        if (empty($project_id)) {
-            return new WP_Error('kaigen_track_no_project', __('No linked project_id configured', 'kaigen-connector'), array('status' => 400));
+        $body = $request->get_body();
+        if (!is_string($body) || $body === '' || strlen($body) > 16384) {
+            return new WP_Error('kaigen_measure_bad_payload', __('Invalid payload', 'kaigen-connector'), array('status' => 400));
         }
 
-        if (!$this->validate_signed_token($project_id, $payload)) {
-            return new WP_Error('kaigen_track_bad_token', __('Invalid tracking signature', 'kaigen-connector'), array('status' => 403));
-        }
-
-        $validated = $this->validate_payload($payload);
-        if (is_wp_error($validated)) {
-            return $validated;
-        }
-
-        $event = array(
-            'projectId' => $project_id,
-            'eventId' => $validated['event_id'],
-            'happenedAt' => $validated['happened_at'],
-            'payloadVersion' => $validated['payload_version'],
-            'visitorId' => $validated['visitor_id'],
-            'sessionId' => $validated['session_id'],
-            'pageUrl' => $validated['page_url'],
-            'referrer' => $validated['referrer'],
-            'utmSource' => $validated['utm_source'],
-            'utmMedium' => $validated['utm_medium'],
-            'utmCampaign' => $validated['utm_campaign'],
-            'trackingSource' => 'wordpress_plugin',
-            'consentScope' => 'audience_only',
-            'payload' => array(
-                'eventType' => $validated['event_type'],
-                'payloadVersion' => $validated['payload_version'],
-                'title' => $validated['title'],
-                'language' => $validated['language'],
-                'path' => $validated['path'],
-                'source' => array(
-                    'sourceAutomationId' => $validated['source_automation_id'],
-                    'sourceAutomationItemId' => $validated['source_automation_item_id'],
-                    'sourceTermId' => $validated['source_term_id'],
-                    'sourceBatchId' => $validated['source_batch_id'],
-                    'sourcePostId' => $validated['source_post_id'],
-                    'sourcePostType' => $validated['source_post_type'],
-                    'sourcePostSlug' => $validated['source_post_slug'],
-                ),
-            ),
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+            'User-Agent' => $this->visitor_user_agent(),
+            'X-Forwarded-For' => $this->visitor_ip(),
         );
+        $cache = $request->get_header('x-umami-cache');
+        if (is_string($cache) && $cache !== '') {
+            $headers['x-umami-cache'] = sanitize_text_field($cache);
+        }
 
-        $api = Kaigen_API::get_instance();
-        $response = $api->send_tracking_event($event);
+        $response = wp_remote_post($config['base_url'] . '/api/send', array(
+            'timeout' => self::RELAY_TIMEOUT,
+            'headers' => $headers,
+            'body' => $body,
+        ));
 
         if (is_wp_error($response)) {
-            $status = $this->get_forward_error_status($response);
-            $api->log_activity('tracking_pageview', 'error', array(
-                'project_id' => $project_id,
-                'event_id' => $validated['event_id'],
-                'error' => $response->get_error_message(),
-                'status' => $status,
-            ));
-
-            return new WP_Error(
-                'kaigen_track_forward_failed',
-                __('Unable to forward tracking event to Tamiro', 'kaigen-connector'),
-                array('status' => $status)
-            );
+            return new WP_Error('kaigen_measure_relay_failed', __('The measurement could not be relayed', 'kaigen-connector'), array('status' => 502));
         }
 
-        $api->log_activity('tracking_pageview', 'success', array(
-            'project_id' => $project_id,
-            'event_id' => $validated['event_id'],
-            'page_url' => $validated['page_url'],
-        ));
+        $code = (int) wp_remote_retrieve_response_code($response);
+        $decoded = json_decode(wp_remote_retrieve_body($response), true);
 
-        return rest_ensure_response(array(
-            'success' => true,
-        ));
+        return new WP_REST_Response(is_array($decoded) ? $decoded : array(), $code > 0 ? $code : 502);
     }
 
     /**
-     * Validate payload fields from the frontend tracker.
+     * The visitor's address as the server sees it, the first of a forwarded chain when a proxy
+     * stands before WordPress.
      */
-    private function validate_payload($payload)
+    private function visitor_ip()
     {
-        $event_id = isset($payload['event_id']) ? sanitize_text_field($payload['event_id']) : '';
-        if (!$this->is_valid_event_id($event_id)) {
-            return new WP_Error('kaigen_track_bad_event_id', __('Invalid event_id', 'kaigen-connector'), array('status' => 400));
+        $forwarded = isset($_SERVER['HTTP_X_FORWARDED_FOR']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR'])) : '';
+        if ($forwarded !== '') {
+            $parts = array_map('trim', explode(',', $forwarded));
+            if (!empty($parts[0]) && filter_var($parts[0], FILTER_VALIDATE_IP)) {
+                return $parts[0];
+            }
         }
+        $remote = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '';
+        return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '';
+    }
 
-        $page_url = isset($payload['page_url']) ? esc_url_raw($payload['page_url']) : '';
-        if (empty($page_url) || !$this->is_same_site_url($page_url)) {
-            return new WP_Error('kaigen_track_bad_page_url', __('Invalid page_url', 'kaigen-connector'), array('status' => 400));
-        }
-
-        $happened_at = isset($payload['happened_at']) ? sanitize_text_field($payload['happened_at']) : '';
-        if (empty($happened_at) || strtotime($happened_at) === false) {
-            $happened_at = gmdate('c');
-        }
-
-        // Pageviews only since 1.3.0 (security audit 2026-10-05): the form capture read every field
-        // of every form, and Tamiro refuses form events since 2026-10-06.
-        $event_type = isset($payload['event_type']) ? sanitize_key($payload['event_type']) : 'pageview';
-        if ($event_type === 'form_submit') {
-            return new WP_Error('kaigen_track_forms_disabled', __('Form submission tracking is disabled', 'kaigen-connector'), array('status' => 410));
-        }
-        if ($event_type !== 'pageview') {
-            $event_type = 'pageview';
-        }
-        $payload_version = isset($payload['payload_version']) ? sanitize_text_field($payload['payload_version']) : '';
-        if (!$this->is_valid_payload_version($payload_version)) {
-            $payload_version = self::TRACK_PAYLOAD_VERSION;
-        }
-
-        $visitor_id = isset($payload['visitor_id']) ? sanitize_text_field($payload['visitor_id']) : null;
-        $session_id = isset($payload['session_id']) ? sanitize_text_field($payload['session_id']) : null;
-        $referrer = isset($payload['referrer']) ? esc_url_raw($payload['referrer']) : null;
-        $utm_source = isset($payload['utm_source']) ? sanitize_text_field($payload['utm_source']) : null;
-        $utm_medium = isset($payload['utm_medium']) ? sanitize_text_field($payload['utm_medium']) : null;
-        $utm_campaign = isset($payload['utm_campaign']) ? sanitize_text_field($payload['utm_campaign']) : null;
-        $title = isset($payload['title']) ? sanitize_text_field($payload['title']) : null;
-        $language = isset($payload['language']) ? sanitize_text_field($payload['language']) : null;
-        $source_automation_id = isset($payload['source_automation_id']) ? sanitize_text_field($payload['source_automation_id']) : null;
-        $source_automation_item_id = isset($payload['source_automation_item_id']) ? sanitize_text_field($payload['source_automation_item_id']) : null;
-        $source_term_id = isset($payload['source_term_id']) ? sanitize_text_field($payload['source_term_id']) : null;
-        $source_batch_id = isset($payload['source_batch_id']) ? sanitize_text_field($payload['source_batch_id']) : null;
-        $source_post_id = isset($payload['source_post_id']) ? sanitize_text_field($payload['source_post_id']) : null;
-        $source_post_type = isset($payload['source_post_type']) ? sanitize_text_field($payload['source_post_type']) : null;
-        $source_post_slug = isset($payload['source_post_slug']) ? sanitize_text_field($payload['source_post_slug']) : null;
-
-        return array(
-            'event_id' => $event_id,
-            'event_type' => $event_type,
-            'payload_version' => $payload_version,
-            'page_url' => $page_url,
-            'path' => (string) wp_parse_url($page_url, PHP_URL_PATH),
-            'happened_at' => $happened_at,
-            'visitor_id' => $this->truncate_or_null($visitor_id, 128),
-            'session_id' => $this->truncate_or_null($session_id, 128),
-            'referrer' => $this->truncate_or_null($referrer, 2048),
-            'utm_source' => $this->truncate_or_null($utm_source, 255),
-            'utm_medium' => $this->truncate_or_null($utm_medium, 255),
-            'utm_campaign' => $this->truncate_or_null($utm_campaign, 255),
-            'title' => $this->truncate_or_null($title, 255),
-            'language' => $this->truncate_or_null($language, 24),
-            'source_automation_id' => $this->truncate_or_null($source_automation_id, 64),
-            'source_automation_item_id' => $this->truncate_or_null($source_automation_item_id, 64),
-            'source_term_id' => $this->truncate_or_null($source_term_id, 64),
-            'source_batch_id' => $this->truncate_or_null($source_batch_id, 64),
-            'source_post_id' => $this->truncate_or_null($source_post_id, 100),
-            'source_post_type' => $this->truncate_or_null($source_post_type, 64),
-            'source_post_slug' => $this->truncate_or_null($source_post_slug, 128),
-        );
+    private function visitor_user_agent()
+    {
+        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : '';
+        return $ua !== '' ? $ua : 'Mozilla/5.0 (unknown)';
     }
 
     /**
-     * Validate signed token delivered by wp_localize_script.
-     */
-    private function validate_signed_token($project_id, $payload)
-    {
-        $token_day = isset($payload['token_day']) ? sanitize_text_field($payload['token_day']) : '';
-        $token = isset($payload['token']) ? sanitize_text_field($payload['token']) : '';
-
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $token_day) || empty($token)) {
-            return false;
-        }
-
-        $allowed_days = array(
-            gmdate('Y-m-d'),
-            gmdate('Y-m-d', time() - DAY_IN_SECONDS),
-            gmdate('Y-m-d', time() + DAY_IN_SECONDS),
-        );
-
-        if (!in_array($token_day, $allowed_days, true)) {
-            return false;
-        }
-
-        $expected = $this->build_signed_token($project_id, $token_day);
-        return hash_equals($expected, $token);
-    }
-
-    /**
-     * Sign a short-lived day token with project and site context.
-     */
-    private function build_signed_token($project_id, $token_day)
-    {
-        $site = untrailingslashit(home_url('/'));
-        $material = $site . '|' . $project_id . '|' . $token_day;
-
-        return hash_hmac('sha256', $material, wp_salt('auth'));
-    }
-
-    /**
-     * Basic same-origin control for public endpoint.
+     * Basic same-origin control for the public collect endpoint.
      */
     private function is_same_origin_request()
     {
@@ -361,14 +455,21 @@ class Kaigen_Tracker
         return false;
     }
 
+    private function normalize_host($host)
+    {
+        if (!is_string($host) || $host === '') {
+            return '';
+        }
+        $host = strtolower($host);
+        return preg_replace('/^www\./', '', $host);
+    }
+
     /**
      * Trivial per-IP+UA rate limiter.
      */
     private function is_rate_limited()
     {
-        $ip = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : 'unknown';
-        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : 'unknown';
-        $key = 'kaigen_track_rl_' . md5($ip . '|' . $ua);
+        $key = 'kaigen_track_rl_' . md5($this->visitor_ip() . '|' . $this->visitor_user_agent());
 
         $count = (int) get_transient($key);
         if ($count >= self::RATE_LIMIT_PER_MINUTE) {
@@ -388,126 +489,5 @@ class Kaigen_Tracker
         }
 
         return (int) $settings['tracking_enabled'] === 1;
-    }
-
-    private function load_tracking_public_key($settings)
-    {
-        if (!$this->should_retry_tracking_public_key($settings)) {
-            return '';
-        }
-
-        $api = Kaigen_API::get_instance();
-        $response = $api->get_tracking_config();
-
-        $settings['tracking_public_key_attempted_at'] = gmdate('c');
-
-        if (!is_wp_error($response) && !empty($response['trackingPublicKey']) && is_string($response['trackingPublicKey'])) {
-            $settings['tracking_public_key'] = sanitize_text_field($response['trackingPublicKey']);
-            unset($settings['tracking_public_key_error']);
-            unset($settings['tracking_public_key_attempted_at']);
-            unset($settings['tracking_public_key_retry_count']);
-        } elseif (is_wp_error($response)) {
-            $settings['tracking_public_key_error'] = $response->get_error_message();
-            $settings['tracking_public_key_retry_count'] = $this->get_tracking_public_key_retry_count($settings) + 1;
-        } else {
-            $settings['tracking_public_key_error'] = __('Tracking public key was not returned by Tamiro', 'kaigen-connector');
-            $settings['tracking_public_key_retry_count'] = $this->get_tracking_public_key_retry_count($settings) + 1;
-        }
-
-        update_option('kaigen_settings', $settings);
-
-        return isset($settings['tracking_public_key']) ? sanitize_text_field($settings['tracking_public_key']) : '';
-    }
-
-    private function should_retry_tracking_public_key($settings)
-    {
-        if ($this->get_tracking_public_key_retry_count($settings) >= self::TRACKING_PUBLIC_KEY_MAX_RETRIES) {
-            return false;
-        }
-
-        if (empty($settings['tracking_public_key_attempted_at']) || !is_string($settings['tracking_public_key_attempted_at'])) {
-            return true;
-        }
-
-        $attempted_at = strtotime($settings['tracking_public_key_attempted_at']);
-        if (!$attempted_at) {
-            return true;
-        }
-
-        return (time() - $attempted_at) >= self::TRACKING_PUBLIC_KEY_RETRY_SECONDS;
-    }
-
-    private function get_tracking_public_key_retry_count($settings)
-    {
-        if (!isset($settings['tracking_public_key_retry_count'])) {
-            return 0;
-        }
-
-        return max(0, (int) $settings['tracking_public_key_retry_count']);
-    }
-
-    private function get_forward_error_status($error)
-    {
-        if (!$error instanceof WP_Error) {
-            return 502;
-        }
-
-        $data = $error->get_error_data();
-        $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
-
-        if ($status >= 400 && $status < 500) {
-            return $status;
-        }
-
-        return 502;
-    }
-
-    private function is_valid_event_id($event_id)
-    {
-        if (!is_string($event_id) || $event_id === '') {
-            return false;
-        }
-
-        return (bool) preg_match('/^[a-zA-Z0-9_-]{8,128}$/', $event_id);
-    }
-
-    private function is_valid_payload_version($payload_version)
-    {
-        if (!is_string($payload_version) || $payload_version === '') {
-            return false;
-        }
-
-        return (bool) preg_match('/^[a-zA-Z0-9._:-]{1,64}$/', $payload_version);
-    }
-
-    private function is_same_site_url($url)
-    {
-        $url_host = $this->normalize_host(wp_parse_url($url, PHP_URL_HOST));
-        $site_host = $this->normalize_host(wp_parse_url(home_url('/'), PHP_URL_HOST));
-
-        return !empty($url_host) && !empty($site_host) && $url_host === $site_host;
-    }
-
-    private function normalize_host($host)
-    {
-        $value = strtolower((string) $host);
-        if (strpos($value, 'www.') === 0) {
-            return substr($value, 4);
-        }
-
-        return $value;
-    }
-
-    private function truncate_or_null($value, $max_length)
-    {
-        if (!is_string($value) || $value === '') {
-            return null;
-        }
-
-        if (strlen($value) <= $max_length) {
-            return $value;
-        }
-
-        return substr($value, 0, $max_length);
     }
 }
