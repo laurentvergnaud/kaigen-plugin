@@ -83,6 +83,12 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.7.0 =
+* The text zones of a page, for the refresh of existing pages: Tamiro reads a page's paragraphs, headings, lists, buttons and, on an Elementor page, its widgets' text fields (`GET /wp-json/kaigen/v1/zones/<id>`), and writes only the zones it changes (`POST`), everything else kept byte for byte, the layout, images and embeds included.
+* A whole section is duplicated, its images, icons, cards and buttons included: Tamiro chooses a section of the page by its shape, the plugin copies it among its siblings with every text of the copy rewritten (never the source's), its links set, the elements it does not need dropped and its anchors removed, never keeping an H1, since the page keeps one; the copy keeps the source's images until Tamiro generates its own. A section holding a form, an HTML or shortcode widget, a global widget, a dynamic field or a widget whose text Tamiro does not read is never duplicated. Elementor's sections and containers, Gutenberg's groups, columns, covers and media and text.
+* The editor is detected page by page: an Elementor page on a site that stays on Gutenberg is an Elementor page. Divi, WPBakery, Beaver Builder, Oxygen and Bricks pages are read as not writable.
+* A write is refused when the page changed since Tamiro read it, or a zone changed. The plugin keeps its own exact copy of the page first (never a WordPress revision, which a site may prune), names it, and `POST /zones/<id>/revert` brings the page back to it, through Elementor's save on an Elementor page so that its caches and CSS follow. Every write and revert says whether the page holds what was written. A global widget, a dynamic field, an image or a shortcode inside a zone is never rewritten; a heading widget rendered as a paragraph is read as one.
+
 = 1.6.2 =
 * The measurement goals validated in Tamiro reach the site at once: Tamiro pushes the rules (`POST /wp-json/kaigen/v1/measure/goals`, with the plugin key); the hourly read stays for a site unreachable at that moment.
 * The measurement script is written as a file under uploads (`kaigen/m.js`) and served by the web server without PHP; the REST route only stands in when the file cannot be written.

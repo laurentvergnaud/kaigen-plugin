@@ -134,6 +134,43 @@ class Kaigen_REST_API
             'callback' => array($this, 'resolve_urls'),
             'permission_callback' => array($this, 'check_permission')
         ));
+
+        // The text zones of a page, read, written and brought back (1.7.0, lot 11 of the automations refonte)
+        register_rest_route($this->namespace, '/zones/(?P<id>\d+)', array(
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'get_zones'),
+                'permission_callback' => array($this, 'check_permission'),
+            ),
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'write_zones'),
+                'permission_callback' => array($this, 'check_permission'),
+            ),
+        ));
+        register_rest_route($this->namespace, '/zones/(?P<id>\d+)/revert', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'revert_zones'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+    }
+
+    public function get_zones($request)
+    {
+        $result = Kaigen_Zones::get_instance()->read(intval($request['id']));
+        return is_wp_error($result) ? $result : rest_ensure_response($result);
+    }
+
+    public function write_zones($request)
+    {
+        $result = Kaigen_Zones::get_instance()->write(intval($request['id']), $request->get_json_params() ?: array());
+        return is_wp_error($result) ? $result : rest_ensure_response($result);
+    }
+
+    public function revert_zones($request)
+    {
+        $result = Kaigen_Zones::get_instance()->revert(intval($request['id']), $request->get_json_params() ?: array());
+        return is_wp_error($result) ? $result : rest_ensure_response($result);
     }
 
     public function get_schema($request)
