@@ -83,6 +83,9 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.12.0 =
+* A post read by Tamiro says its own editor (`extensions.page_editor`): Elementor, Divi, WPBakery, Beaver Builder, Oxygen, Bricks, blocks or classic, from what the post itself holds. Until now Tamiro only knew the site's editor, and refused every post of a site with Elementor installed, the classic ones included. `editor_type` stays the site's editor.
+
 = 1.11.0 =
 * The links that lead to a redirect: Tamiro replaces their address by the one they end on (`changes.repoints`, each `from` the href as the content holds it, `to` the final address). Only the `href` of an `a` tag changes, everything else is written back byte for byte; an address the content does not hold refuses the whole edit, and a post changed since Tamiro read it is never written.
 

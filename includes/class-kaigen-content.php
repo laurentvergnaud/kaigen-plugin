@@ -366,7 +366,10 @@ class Kaigen_Content
         $taxonomies = $this->get_post_taxonomies_v2($post_id, $post->post_type);
         $featured_media_id = get_post_thumbnail_id($post_id);
         $extensions = array(
+            // The site's editor, kept as before; `page_editor` (1.12.0) is this page's own, read from what the page
+            // holds: an Elementor page on a Gutenberg site, a classic page on an Elementor site.
             'editor_type' => $this->get_editor_type($post->post_type),
+            'page_editor' => Kaigen_Zones::get_instance()->editor_of($post),
             'modified_gmt' => get_post_modified_time('c', true, $post),
         );
         $structured_data_json = get_post_meta($post_id, Kaigen_Structured_Data::META_JSON, true);

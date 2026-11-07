@@ -109,7 +109,7 @@ The plugin registers the following REST API endpoints:
 - `GET /wp-json/kaigen/v1/structure` - Get site structure; since 1.10.0 it also says the SEO plugin's version (`seoPluginVersion`), and with `?include=abilities` the abilities the site registers with WordPress's Abilities API (6.9 and later; `null` before), each by its name, category and declarations (read only, destructive, idempotent), sorted, 300 at most with their `count` (ADR 0188, `includes/class-kaigen-abilities.php`). Nothing is executed. Tests: `php test/kaigen-plugin/abilities.test.php` (`yarn test:plugin`).
 - `GET /wp-json/kaigen/v1/content` - Get content library
 - `POST /wp-json/kaigen/v1/content` - Create post
-- `GET /wp-json/kaigen/v1/content/{id}` - Get specific post
+- `GET /wp-json/kaigen/v1/content/{id}` - Get specific post; since 1.12.0 `extensions.page_editor` is the post's own editor, read from what it holds (`Kaigen_Zones::editor_of`), while `extensions.editor_type` stays the site's (ADR 0193)
 - `POST /wp-json/kaigen/v1/content/{id}` - Update post (a v2 patch); since 1.11.0 `changes.repoints` replaces the address of the links that lead to a redirect, the `href` of an `a` tag alone, all or nothing (ADR 0189, `Kaigen_Content_Edits::apply_repoints`, tested by `php scripts/test-kaigen-content-edits.php`)
 - `POST /wp-json/kaigen/v1/media/import` - Import a remote image into the media library
 - `GET /wp-json/kaigen/v1/links` - Get internal linking candidates
