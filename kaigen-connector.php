@@ -4,7 +4,7 @@
  * Plugin Name: Tamiro Connector
  * Plugin URI: https://app.tamiro.ai
  * Description: Connect your WordPress site to Tamiro for AI-powered content generation and management
- * Version: 1.7.0
+ * Version: 1.11.0
  * Update URI: https://github.com/laurentvergnaud/kaigen-plugin
  * Author: Tamiro
  * Author URI: https://app.tamiro.ai
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KAIGEN_VERSION', '1.7.0');
+define('KAIGEN_VERSION', '1.11.0');
 define('KAIGEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KAIGEN_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('KAIGEN_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -70,6 +70,7 @@ class Kaigen_Connector
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-auth.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-api.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-content.php';
+        require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-abilities.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-structured-data.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-content-edits.php';
         require_once KAIGEN_PLUGIN_DIR . 'includes/class-kaigen-update.php';
@@ -124,6 +125,7 @@ class Kaigen_Connector
     public function deactivate()
     {
         Kaigen_Sync_Events::get_instance()->unschedule_cron();
+        Kaigen_Zones::get_instance()->unschedule_purge();
 
         // Flush rewrite rules
         flush_rewrite_rules();
@@ -141,6 +143,8 @@ class Kaigen_Connector
         Kaigen_Tracker::get_instance();
         Kaigen_Editor_Button::get_instance();
         Kaigen_Sync_Events::get_instance();
+        // The daily purge of the page copies past their 30 days (1.9.0, ADR 0152).
+        Kaigen_Zones::get_instance();
         Kaigen_Structured_Data::get_instance();
         Kaigen_Schema::get_instance();
         // The WooCommerce tracker (includes/class-kaigen-woocommerce-tracker.php) is not started

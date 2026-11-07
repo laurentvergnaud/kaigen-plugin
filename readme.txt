@@ -83,6 +83,16 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.11.0 =
+* The links that lead to a redirect: Tamiro replaces their address by the one they end on (`changes.repoints`, each `from` the href as the content holds it, `to` the final address). Only the `href` of an `a` tag changes, everything else is written back byte for byte; an address the content does not hold refuses the whole edit, and a post changed since Tamiro read it is never written.
+
+= 1.10.0 =
+* The site's inventory for Tamiro: `GET /structure` says the version of the SEO plugin, and with `?include=abilities` the abilities the site registers with WordPress's Abilities API (WordPress 6.9 and later), each by its name, its category and whether it declares itself read only, destructive or idempotent. Nothing is executed; the list is null before WordPress 6.9.
+
+= 1.9.0 =
+* The copies of a page Tamiro's writes keep, to bring the page back, really last 30 days: a daily task drops every copy of the site past that age, on any page, where before a copy was dropped only by the next write on its own page.
+* Deleting the plugin deletes its copies of pages and their daily task; an update never does.
+
 = 1.7.0 =
 * The text zones of a page, for the refresh of existing pages: Tamiro reads a page's paragraphs, headings, lists, buttons and, on an Elementor page, its widgets' text fields (`GET /wp-json/kaigen/v1/zones/<id>`), and writes only the zones it changes (`POST`), everything else kept byte for byte, the layout, images and embeds included.
 * A whole section is duplicated, its images, icons, cards and buttons included: Tamiro chooses a section of the page by its shape, the plugin copies it among its siblings with every text of the copy rewritten (never the source's), its links set, the elements it does not need dropped and its anchors removed, never keeping an H1, since the page keeps one; the copy keeps the source's images until Tamiro generates its own. A section holding a form, an HTML or shortcode widget, a global widget, a dynamic field or a widget whose text Tamiro does not read is never duplicated. Elementor's sections and containers, Gutenberg's groups, columns, covers and media and text.

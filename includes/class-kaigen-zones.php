@@ -7,7 +7,8 @@
  *
  * The copy is the plugin's own (`_kaigen_zones_backup_<id>`), never a WordPress revision: a site that keeps
  * few revisions prunes them, and restoring one copied Elementor's data without clearing its caches, the page
- * still showing the version undone (faaaster.io, 2026-10-16). A copy is dropped once restored, or after 30 days.
+ * still showing the version undone (faaaster.io, 2026-10-16). A copy is dropped once restored, or once it is
+ * 30 days old: by the next write on its page, and since 1.9.0 by a daily purge of the whole site (ADR 0152).
  *
  *   GET  /kaigen/v1/zones/<post_id>          the zones, the structures Tamiro may duplicate, the editor
  *   POST /kaigen/v1/zones/<post_id>          { expected_modified, operations }: the zones written, the copy named
@@ -22,13 +23,12 @@ require_once KAIGEN_PLUGIN_DIR . 'includes/zones/class-kaigen-zones-text.php';
 require_once KAIGEN_PLUGIN_DIR . 'includes/zones/class-kaigen-zones-blocks.php';
 require_once KAIGEN_PLUGIN_DIR . 'includes/zones/class-kaigen-zones-html.php';
 require_once KAIGEN_PLUGIN_DIR . 'includes/zones/class-kaigen-zones-elementor.php';
+require_once KAIGEN_PLUGIN_DIR . 'includes/zones/class-kaigen-zones-copies.php';
 
 class Kaigen_Zones {
 
     // The editors Tamiro writes in; any other is read as not writable, its zones left to the client.
     private const WRITABLE = array('gutenberg', 'classic', 'elementor');
-    private const BACKUP_PREFIX = '_kaigen_zones_backup_';
-    private const BACKUP_DAYS = 30;
 
     private static $instance = null;
 
@@ -37,6 +37,40 @@ class Kaigen_Zones {
             self::$instance = new self();
         }
         return self::$instance;
+    }
+
+    private function __construct() {
+        add_action('init', array($this, 'ensure_purge_scheduled'));
+        add_action(Kaigen_Zones_Copies::PURGE_HOOK, array($this, 'purge_expired_copies'));
+    }
+
+    public function ensure_purge_scheduled() {
+        if (!wp_next_scheduled(Kaigen_Zones_Copies::PURGE_HOOK)) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', Kaigen_Zones_Copies::PURGE_HOOK);
+        }
+    }
+
+    public function unschedule_purge() {
+        wp_clear_scheduled_hook(Kaigen_Zones_Copies::PURGE_HOOK);
+    }
+
+    /**
+     * The daily purge (1.9.0, ADR 0152): every copy of the site past its 30 days dropped, whatever page
+     * it is on, so that a copy never outlives its life on a page Tamiro does not write again.
+     */
+    public function purge_expired_copies() {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key LIKE %s",
+            $wpdb->esc_like(Kaigen_Zones_Copies::PREFIX) . '%'
+        ));
+        $copies = array();
+        foreach ((array) $rows as $row) {
+            $copies[] = array('id' => intval($row->meta_id), 'copy' => maybe_unserialize($row->meta_value));
+        }
+        foreach (Kaigen_Zones_Copies::expired_ids($copies, time()) as $meta_id) {
+            delete_metadata_by_mid('post', $meta_id);
+        }
     }
 
     /**
@@ -182,7 +216,7 @@ class Kaigen_Zones {
             return $guard;
         }
         $id = isset($data['backup']) ? preg_replace('/[^a-f0-9]/', '', strval($data['backup'])) : '';
-        $backup = $id !== '' ? get_post_meta($post->ID, self::BACKUP_PREFIX . $id, true) : null;
+        $backup = $id !== '' ? get_post_meta($post->ID, Kaigen_Zones_Copies::PREFIX . $id, true) : null;
         if (!is_array($backup) || !isset($backup['editor'], $backup['content'])) {
             return new WP_Error('unknown_backup', __('No copy of this page under this name', 'kaigen-connector'), array('status' => 422));
         }
@@ -221,11 +255,10 @@ class Kaigen_Zones {
      */
     private function keep_backup($post, $editor) {
         foreach (array_keys(get_post_meta($post->ID)) as $key) {
-            if (strpos($key, self::BACKUP_PREFIX) !== 0) {
+            if (strpos($key, Kaigen_Zones_Copies::PREFIX) !== 0) {
                 continue;
             }
-            $old = get_post_meta($post->ID, $key, true);
-            if (!is_array($old) || !isset($old['created']) || strtotime($old['created']) < time() - self::BACKUP_DAYS * DAY_IN_SECONDS) {
+            if (Kaigen_Zones_Copies::expired(get_post_meta($post->ID, $key, true), time())) {
                 delete_post_meta($post->ID, $key);
             }
         }
@@ -237,13 +270,13 @@ class Kaigen_Zones {
             'content' => $post->post_content,
             'elementor' => $editor === 'elementor' ? strval(get_post_meta($post->ID, '_elementor_data', true)) : null,
         );
-        if (!add_post_meta($post->ID, self::BACKUP_PREFIX . $id, wp_slash($copy), true)) {
+        if (!add_post_meta($post->ID, Kaigen_Zones_Copies::PREFIX . $id, wp_slash($copy), true)) {
             throw new Kaigen_Zones_Error('no_backup', 'The page as it is could not be copied', 500);
         }
         // The copy read back as kept: a copy that would not restore the page is no copy.
-        $kept = get_post_meta($post->ID, self::BACKUP_PREFIX . $id, true);
+        $kept = get_post_meta($post->ID, Kaigen_Zones_Copies::PREFIX . $id, true);
         if (!is_array($kept) || $kept['content'] !== $copy['content'] || $kept['elementor'] !== $copy['elementor']) {
-            delete_post_meta($post->ID, self::BACKUP_PREFIX . $id);
+            delete_post_meta($post->ID, Kaigen_Zones_Copies::PREFIX . $id);
             throw new Kaigen_Zones_Error('no_backup', 'The copy of the page does not read back as the page', 500);
         }
         return $id;
@@ -251,7 +284,7 @@ class Kaigen_Zones {
 
     private function drop_backup($post_id, $id) {
         if ($id) {
-            delete_post_meta($post_id, self::BACKUP_PREFIX . $id);
+            delete_post_meta($post_id, Kaigen_Zones_Copies::PREFIX . $id);
         }
     }
 

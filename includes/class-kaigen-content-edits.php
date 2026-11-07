@@ -1,7 +1,8 @@
 <?php
 /**
  * Fragment edits of a post's content (ADR 0064, plugin 1.4.0): a link placed on words that already
- * exist, an H1 of the content demoted to H2 or removed. The content is never rebuilt: it is cut into
+ * exist, an H1 of the content demoted to H2 or removed; since 1.11.0 (ADR 0189) the address of a link
+ * that leads to a redirect replaced by the address it ends on. The content is never rebuilt: it is cut into
  * its tags and texts, the one fragment is changed, and everything else is written back byte for byte,
  * Gutenberg's block comments included.
  */
@@ -17,6 +18,11 @@ class Kaigen_Content_Edits {
     // The blocks whose text may carry a link: a paragraph, a list item.
     private const CONTAINERS = array('p', 'li');
     private const VOID = array('br', 'img', 'hr', 'input', 'meta', 'link', 'source', 'wbr', 'col', 'embed', 'param', 'track', 'area');
+    // The inline formatting a link may wrap: the words may cross these tags when each one is opened
+    // and closed within them; any other tag, or one half of a pair, refuses the placement.
+    private const INLINE = array('span', 'strong', 'em', 'b', 'i', 'u', 's', 'sup', 'sub', 'mark', 'small', 'abbr', 'del', 'ins', 'time', 'bdi', 'bdo');
+    // The void tags the words may cross: they render no text and need no closing.
+    private const INLINE_VOID = array('br', 'wbr');
 
     /**
      * Places each link on its words, in the paragraph or list item whose text holds its sentence.
@@ -37,6 +43,55 @@ class Kaigen_Content_Edits {
             $content = $placed;
         }
         return $content;
+    }
+
+    /**
+     * Replaces the address of the links that lead to a redirect (1.11.0, ADR 0189): each `from` is an href
+     * as the content holds it once its entities are decoded, `to` the address it ends on. Only the value of
+     * the `href` attribute of an `a` tag changes; the tag's other attributes, its text and the rest of the
+     * content are written back byte for byte. All or nothing: an address the content does not hold refuses
+     * the whole edit, naming it.
+     */
+    public static function apply_repoints($content, $repoints) {
+        $tokens = self::tokens($content);
+        $done = array_fill(0, count($repoints), 0);
+        foreach ($repoints as $index => $repoint) {
+            $from = isset($repoint['from']) ? strval($repoint['from']) : '';
+            $to = isset($repoint['to']) ? esc_url_raw(strval($repoint['to'])) : '';
+            if ($from === '' || $to === '' || !preg_match('#^https?://#i', $to)) {
+                return new WP_Error('invalid_repoint', sprintf(__('Repoint %d: from and an http(s) to are required', 'kaigen-connector'), $index), array('status' => 400));
+            }
+        }
+        foreach ($tokens as $position => $token) {
+            if (!self::is_tag($token)) {
+                continue;
+            }
+            $info = self::tag_info($token);
+            if ($info === null || $info['closing'] || $info['name'] !== 'a') {
+                continue;
+            }
+            if (!preg_match('/(\shref\s*=\s*)(?:"([^"]*)"|\'([^\']*)\'|([^\s>"\']+))/i', $token, $match, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+            $quoted = isset($match[2]) && $match[2][1] >= 0 ? 2 : (isset($match[3]) && $match[3][1] >= 0 ? 3 : 4);
+            $value = $match[$quoted][0];
+            $decoded = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            foreach ($repoints as $index => $repoint) {
+                if ($decoded !== strval($repoint['from'])) {
+                    continue;
+                }
+                $replacement = htmlspecialchars(esc_url_raw(strval($repoint['to'])), ENT_QUOTES, 'UTF-8');
+                $tokens[$position] = substr($token, 0, $match[$quoted][1]) . $replacement . substr($token, $match[$quoted][1] + strlen($value));
+                $done[$index] += 1;
+                break;
+            }
+        }
+        foreach ($done as $index => $count) {
+            if ($count === 0) {
+                return new WP_Error('not_in_content', sprintf(__('Repoint %d: no link of the content has this address', 'kaigen-connector'), $index), array('status' => 422));
+            }
+        }
+        return implode('', $tokens);
     }
 
     /**
@@ -158,8 +213,13 @@ class Kaigen_Content_Edits {
         return null;
     }
 
-    // The first text of the block outside any forbidden element that holds the words gets the link.
+    // The first words of the block that can take the link get it: the match runs on the block's text
+    // read as one stream, so the words may cross inline formatting (a bold span, a footnote sup, the
+    // non-breaking spaces an editor wraps in spans); the whole range is wrapped, formatting kept.
     private static function link_in_block($tokens, $start, $end, $pattern, $href) {
+        // The block's texts as one stream, each mapped to its token and its forbidden depth.
+        $pieces = array();
+        $stream = '';
         $forbidden = 0;
         for ($cursor = $start; $cursor <= $end; $cursor++) {
             $token = $tokens[$cursor];
@@ -170,15 +230,135 @@ class Kaigen_Content_Edits {
                 }
                 continue;
             }
-            if ($forbidden > 0 || !preg_match($pattern, $token, $match, PREG_OFFSET_CAPTURE)) {
+            if ($token === '') {
                 continue;
             }
-            $offset = $match[0][1];
-            $words = $match[0][0];
-            $tokens[$cursor] = substr($token, 0, $offset) . '<a href="' . esc_url($href) . '">' . $words . '</a>' . substr($token, $offset + strlen($words));
-            return implode('', $tokens);
+            $pieces[] = array('token' => $cursor, 'from' => strlen($stream), 'length' => strlen($token), 'forbidden' => $forbidden);
+            $stream .= $token;
+        }
+        $from = 0;
+        while ($from <= strlen($stream) && preg_match($pattern, $stream, $match, PREG_OFFSET_CAPTURE, $from)) {
+            $placed = self::wrap_match($tokens, $pieces, $match[0][1], strlen($match[0][0]), $href);
+            if ($placed !== null) {
+                return $placed;
+            }
+            // The next try starts on the next character, never inside a UTF-8 sequence.
+            $from = $match[0][1] + 1;
+            while ($from < strlen($stream) && (ord($stream[$from]) & 0xC0) === 0x80) {
+                $from++;
+            }
         }
         return null;
+    }
+
+    // Wraps the matched range of the stream in the link, when every text it covers is outside the
+    // forbidden elements and every tag it crosses is inline formatting that nests: an element wholly
+    // inside the range is kept inside the link; one the words are flush with (bold words at the
+    // range's edge) moves the link's bound over its own tags; words cutting an element's text in
+    // half refuse the placement, the nesting could not stay valid without rebuilding the content.
+    private static function wrap_match($tokens, $pieces, $offset, $length, $href) {
+        $begin = null;
+        $finish = null;
+        foreach ($pieces as $piece) {
+            if ($piece['from'] + $piece['length'] <= $offset || $piece['from'] >= $offset + $length) {
+                continue;
+            }
+            if ($piece['forbidden'] > 0) {
+                return null;
+            }
+            if ($begin === null) {
+                $begin = array('token' => $piece['token'], 'at' => $offset - $piece['from']);
+            }
+            $finish = array('token' => $piece['token'], 'at' => min($piece['length'], $offset + $length - $piece['from']), 'length' => $piece['length']);
+        }
+        if ($begin === null || $finish === null) {
+            return null;
+        }
+        // The tags between the two texts: `$before` closes elements opened before the range,
+        // `$after` is left by elements still open at its end.
+        $after = array();
+        $before = array();
+        for ($cursor = $begin['token'] + 1; $cursor < $finish['token']; $cursor++) {
+            $token = $tokens[$cursor];
+            if (!self::is_tag($token)) {
+                continue;
+            }
+            $info = self::tag_info($token);
+            if (!$info) {
+                // A comment inside the words: left alone.
+                return null;
+            }
+            if (in_array($info['name'], self::VOID, true) || $info['self_closing']) {
+                if (!in_array($info['name'], self::INLINE_VOID, true)) {
+                    return null;
+                }
+                continue;
+            }
+            if (!in_array($info['name'], self::INLINE, true)) {
+                return null;
+            }
+            if ($info['closing']) {
+                if (count($after) > 0) {
+                    if (array_pop($after) !== $info['name']) {
+                        return null;
+                    }
+                } else {
+                    $before[] = $info['name'];
+                }
+            } else {
+                $after[] = $info['name'];
+            }
+        }
+        // The link opens where the words start, or before the opening tags of the elements they
+        // close; it closes where they end, or after the closing tags of the elements they open.
+        $open_at = array('token' => $begin['token'], 'at' => $begin['at']);
+        if (count($before) > 0) {
+            if ($begin['at'] !== 0) {
+                return null;
+            }
+            $cursor = $begin['token'] - 1;
+            foreach ($before as $name) {
+                while ($cursor >= 0 && $tokens[$cursor] === '') {
+                    $cursor--;
+                }
+                $info = $cursor >= 0 && self::is_tag($tokens[$cursor]) ? self::tag_info($tokens[$cursor]) : null;
+                if (!$info || $info['closing'] || $info['self_closing'] || $info['name'] !== $name) {
+                    return null;
+                }
+                $cursor--;
+            }
+            $open_at = array('token' => $cursor + 1, 'at' => 0);
+        }
+        $close_at = array('token' => $finish['token'], 'at' => $finish['at']);
+        if (count($after) > 0) {
+            if ($finish['at'] !== $finish['length']) {
+                return null;
+            }
+            $cursor = $finish['token'] + 1;
+            $count = count($tokens);
+            foreach (array_reverse($after) as $name) {
+                while ($cursor < $count && $tokens[$cursor] === '') {
+                    $cursor++;
+                }
+                $info = $cursor < $count && self::is_tag($tokens[$cursor]) ? self::tag_info($tokens[$cursor]) : null;
+                if (!$info || !$info['closing'] || $info['name'] !== $name) {
+                    return null;
+                }
+                $cursor++;
+            }
+            $close_at = array('token' => $cursor - 1, 'at' => strlen($tokens[$cursor - 1]));
+        }
+        $opening = '<a href="' . esc_url($href) . '">';
+        if ($open_at['token'] === $close_at['token']) {
+            $token = $tokens[$open_at['token']];
+            $tokens[$open_at['token']] = substr($token, 0, $open_at['at']) . $opening . substr($token, $open_at['at'], $close_at['at'] - $open_at['at']) . '</a>' . substr($token, $close_at['at']);
+        } else {
+            $last = $tokens[$close_at['token']];
+            $tokens[$close_at['token']] = substr($last, 0, $close_at['at']) . '</a>' . substr($last, $close_at['at']);
+            $first = $tokens[$open_at['token']];
+            $tokens[$open_at['token']] = substr($first, 0, $open_at['at']) . $opening . substr($first, $open_at['at']);
+        }
+        return implode('', $tokens);
     }
 
     private static function fix_heading($content, $text, $action) {

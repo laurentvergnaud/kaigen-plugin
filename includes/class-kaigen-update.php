@@ -73,7 +73,7 @@ class Kaigen_Update {
         // has, the fragment changed, written back without the HTML filter, which would strip from the
         // rest of the post what a request without a user may not write (an iframe, a form).
         $this->raw_content_write = false;
-        if (isset($data['changes']['links']) || isset($data['changes']['headings'])) {
+        if (isset($data['changes']['links']) || isset($data['changes']['headings']) || isset($data['changes']['repoints'])) {
             if (isset($data['changes']['post']['content'])) {
                 return new WP_Error('content_and_edits', __('A request changes the content or edits a fragment of it, not both', 'kaigen-connector'), array('status' => 400));
             }
@@ -84,10 +84,14 @@ class Kaigen_Update {
             if (!is_wp_error($edited) && isset($data['changes']['headings']) && is_array($data['changes']['headings'])) {
                 $edited = Kaigen_Content_Edits::apply_headings($edited, $data['changes']['headings']);
             }
+            // The address of a link that leads to a redirect (1.11.0, ADR 0189).
+            if (!is_wp_error($edited) && isset($data['changes']['repoints']) && is_array($data['changes']['repoints'])) {
+                $edited = Kaigen_Content_Edits::apply_repoints($edited, $data['changes']['repoints']);
+            }
             if (is_wp_error($edited)) {
                 return $edited;
             }
-            unset($data['changes']['links'], $data['changes']['headings']);
+            unset($data['changes']['links'], $data['changes']['headings'], $data['changes']['repoints']);
             if (!isset($data['changes']['post']) || !is_array($data['changes']['post'])) {
                 $data['changes']['post'] = array();
             }

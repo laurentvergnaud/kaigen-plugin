@@ -271,8 +271,16 @@ class Kaigen_REST_API
             'wpVersion' => get_bloginfo('version'),
             'siteUrl' => home_url(),
             'siteName' => get_bloginfo('name'),
-            'pluginVersion' => KAIGEN_VERSION
+            'pluginVersion' => KAIGEN_VERSION,
+            // Since 1.10.0 (ADR 0188).
+            'seoPluginVersion' => Kaigen_Abilities::seo_plugin_version()
         );
+
+        // The abilities the site registers, on request only: listing them wakes every plugin's registration,
+        // which the reads before a write do not need (ADR 0188).
+        if (in_array('abilities', $this->parse_csv_or_array($request->get_param('include')), true)) {
+            $structure['abilities'] = Kaigen_Abilities::inventory();
+        }
 
         return rest_ensure_response($structure);
     }
