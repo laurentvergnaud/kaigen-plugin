@@ -118,7 +118,7 @@ class Kaigen_Sync_Events
         }
 
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         return in_array($post->post_type, $enabled_types, true);
     }

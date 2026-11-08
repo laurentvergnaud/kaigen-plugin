@@ -135,8 +135,7 @@ class Kaigen_API {
         $content_handler = Kaigen_Content::get_instance();
 
         if (!$post_types) {
-            $settings = get_option('kaigen_settings', array());
-            $post_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+            $post_types = Kaigen_Content::accessible_post_types();
         }
 
         $posts = array();

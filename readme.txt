@@ -15,7 +15,7 @@ Connect your WordPress site to Tamiro for AI-powered content generation and mana
 Tamiro Connector seamlessly integrates your WordPress site with the Tamiro platform, enabling:
 
 * **Dual Authentication**: Support for both API Key and WordPress Application Password authentication
-* **Custom Post Types**: Select which post types to expose to Tamiro
+* **Every content type**: Tamiro reaches every public content type of the site, its products and its own types included
 * **Content Discovery**: Automatically detect and share your site structure, custom fields (ACF, Meta Box, Pods, CMB2), and editor type
 * **Bidirectional Sync**: Generate content in Tamiro and publish directly to WordPress, or update existing posts
 * **Editor Integration**: "Open in Tamiro" button in post editor for seamless editing
@@ -39,9 +39,8 @@ Tamiro Connector seamlessly integrates your WordPress site with the Tamiro platf
 4. Choose authentication method (API Key recommended)
 5. If using API Key: Generate a key in your Tamiro dashboard and paste it here
 6. If using Application Password: Generate one in your WordPress profile and configure in Tamiro
-7. Select which post types to expose to Tamiro
-8. Configure role permissions
-9. Test the connection
+7. Configure role permissions
+8. Test the connection
 
 == Updates ==
 
@@ -63,7 +62,7 @@ We recommend using API Key authentication for better security and easier managem
 
 = Can I control which post types are accessible? =
 
-Yes! In the Post Types tab of the settings page, you can select exactly which custom post types should be exposed to Tamiro.
+No, since 1.13.0: Tamiro reaches every public content type of the site, the media library left out, and the Post Types tab lists them. The fields WordPress protects stay out of reach, whatever the type.
 
 = Does it work with custom field plugins? =
 
@@ -76,12 +75,20 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 == Screenshots ==
 
 1. Settings page - Authentication tab
-2. Settings page - Post Types selection
+2. Settings page - Post Types list
 3. Settings page - Role permissions
 4. "Open in Tamiro" button in post editor
 5. Sync logs viewer
 
 == Changelog ==
+
+= 1.14.0 =
+* Tamiro can install the latest release of this plugin on the site when its team asks for it (`POST /wp-json/kaigen/v1/self-update`, Tamiro's key only): the update comes from the plugin's own repository, the one WordPress already checks, never from an address in the request. The plugin stays active during the update. A site where WordPress cannot write its own files (FTP credentials asked), that forbids file changes (`DISALLOW_FILE_MODS`) or that is a multisite network is still updated by hand.
+* Updates come from the release asset only: when the latest release cannot be read or has no asset, nothing is offered, never the source of a tag or of the branch.
+* Security review of 2026-11-08: a content is created only in a type Tamiro reaches, never a template or a menu; a WordPress user (application password mode) may only create, edit and publish what WordPress lets them; the zones and the schema preview reach only the types Tamiro reaches; the internal links list is bounded to 500.
+
+= 1.13.0 =
+* Tamiro reaches every public content type of the site, its products and its own types included, with no selection to make: the « Post Types » tab lists them, the index Tamiro keeps of the site, the reading of a content and the writing of its links, headings, SEO fields and structured data cover them all. The media library stays out; the protected fields of a content stay out of reach, whatever its type.
 
 = 1.12.0 =
 * A post read by Tamiro says its own editor (`extensions.page_editor`): Elementor, Divi, WPBakery, Beaver Builder, Oxygen, Bricks, blocks or classic, from what the post itself holds. Until now Tamiro only knew the site's editor, and refused every post of a site with Elementor installed, the classic ones included. `editor_type` stays the site's editor.

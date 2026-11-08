@@ -56,6 +56,11 @@ class Kaigen_Update {
             return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
         }
 
+        $new_status = isset($data['changes']['post']['status']) && is_string($data['changes']['post']['status']) ? $data['changes']['post']['status'] : '';
+        if (!$this->user_may_write(get_current_user_id(), $post->post_type, $post_id, $new_status)) {
+            return new WP_Error('insufficient_permissions', __('Insufficient permissions', 'kaigen-connector'), array('status' => 403));
+        }
+
         $scope_error = $this->validate_write_scope($data['changes'], $post->post_type);
         if (is_wp_error($scope_error)) {
             return $scope_error;
@@ -161,7 +166,18 @@ class Kaigen_Update {
             return $validation_error;
         }
 
-        $scope_error = $this->validate_write_scope($data, sanitize_key($data['post']['post_type']));
+        // A post of a type Tamiro reaches only, by a user who may create it and give it its status (security audit of
+        // 2026-11-08: a key created any existing type, a template or a menu item included, and an editor in the
+        // application password mode published a type they cannot).
+        $create_type = sanitize_key($data['post']['post_type']);
+        if (!$this->is_post_type_enabled($create_type)) {
+            return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
+        }
+        if (!$this->validate_capabilities(get_current_user_id(), $create_type) || !$this->user_may_write(get_current_user_id(), $create_type, 0, strval($data['post']['status']))) {
+            return new WP_Error('insufficient_permissions', __('Insufficient permissions', 'kaigen-connector'), array('status' => 403));
+        }
+
+        $scope_error = $this->validate_write_scope($data, $create_type);
         if (is_wp_error($scope_error)) {
             return $scope_error;
         }
@@ -219,11 +235,32 @@ class Kaigen_Update {
     }
 
     /**
-     * Whether the site exposes this post type to Tamiro (Post Types tab of the settings).
+     * What a WordPress user (the application password mode) may write: the post itself, and a published, scheduled or
+     * private status only with the type's publishing capability. A request with Tamiro's key has no user; what it
+     * writes is bounded by the write scope (security audit of 2026-11-08).
+     */
+    private function user_may_write($user_id, $post_type, $post_id, $status) {
+        if (!$user_id) {
+            return true;
+        }
+        $type = get_post_type_object($post_type);
+        if (!$type) {
+            return false;
+        }
+        if ($post_id && !user_can($user_id, 'edit_post', $post_id)) {
+            return false;
+        }
+        if (in_array($status, array('publish', 'future', 'private'), true) && !user_can($user_id, $type->cap->publish_posts)) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Whether the site exposes this post type to Tamiro (every public type since 1.13.0, ADR 0197).
      */
     private function is_post_type_enabled($post_type) {
-        $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         return in_array($post_type, $enabled_types, true);
     }

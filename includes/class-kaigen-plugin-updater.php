@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 }
 
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+use YahnisElsts\PluginUpdateChecker\v5p6\Vcs\Api as PucVcsApi;
 
 class Kaigen_Plugin_Updater
 {
@@ -48,10 +49,20 @@ class Kaigen_Plugin_Updater
         );
 
         $this->update_checker->setBranch(KAIGEN_GITHUB_PLUGIN_BRANCH);
-        $this->update_checker->getVcsApi()->enableReleaseAssets('/kaigen-connector.*\.zip($|[?&#])/i');
+        // The release asset only (security audit of 2026-11-08): when the latest release cannot be read or has no
+        // asset, nothing is offered, never the source of the latest tag nor the head of the branch.
+        $this->update_checker->getVcsApi()->enableReleaseAssets('/kaigen-connector.*\.zip($|[?&#])/i', PucVcsApi::REQUIRE_RELEASE_ASSETS);
+        add_filter($this->update_checker->getUniqueName('vcs_update_detection_strategies'), array($this, 'latest_release_only'));
         $this->update_checker->addHttpRequestArgFilter(array($this, 'filter_http_request_args'));
 
         add_action('puc_api_error', array($this, 'log_update_error'), 10, 4);
+    }
+
+    public function latest_release_only($strategies)
+    {
+        return is_array($strategies) && isset($strategies[PucVcsApi::STRATEGY_LATEST_RELEASE])
+            ? array(PucVcsApi::STRATEGY_LATEST_RELEASE => $strategies[PucVcsApi::STRATEGY_LATEST_RELEASE])
+            : array();
     }
 
     public function get_update_checker()

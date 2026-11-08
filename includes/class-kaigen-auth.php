@@ -221,6 +221,30 @@ class Kaigen_Auth {
         }
 
         // Always try API key auth first (works even if auth_method is app_password).
+        if ($this->api_key_matches($log_auth)) {
+            return true;
+        }
+
+        // Fallback for legacy app-password mode (authenticated WP user context).
+        if ($auth_method === 'app_password') {
+            $allowed = is_user_logged_in() && current_user_can('kaigen_edit_posts');
+            if ($log_auth) {
+                error_log('[Tamiro connector][verify_incoming_request] App password fallback result=' . ($allowed ? 'true' : 'false'));
+            }
+            return $allowed;
+        }
+
+        if ($log_auth) {
+            error_log('[Tamiro connector][verify_incoming_request] Authorization failed');
+        }
+
+        return false;
+    }
+
+    /**
+     * The request carries the key this site keeps for Tamiro.
+     */
+    private function api_key_matches($log_auth) {
         $provided_key = $this->extract_api_key_from_request();
         if (is_string($provided_key) && $provided_key !== '') {
             $stored_key = $this->get_api_key();
@@ -242,20 +266,15 @@ class Kaigen_Auth {
             error_log('[Tamiro connector][verify_incoming_request] No API key found in headers');
         }
 
-        // Fallback for legacy app-password mode (authenticated WP user context).
-        if ($auth_method === 'app_password') {
-            $allowed = is_user_logged_in() && current_user_can('kaigen_edit_posts');
-            if ($log_auth) {
-                error_log('[Tamiro connector][verify_incoming_request] App password fallback result=' . ($allowed ? 'true' : 'false'));
-            }
-            return $allowed;
-        }
-
-        if ($log_auth) {
-            error_log('[Tamiro connector][verify_incoming_request] Authorization failed');
-        }
-
         return false;
+    }
+
+    /**
+     * A request authenticated by Tamiro's key alone, never by a WordPress user: the plugin's own update
+     * (1.14.0, ADR 0199).
+     */
+    public function verify_api_key_request() {
+        return $this->api_key_matches(defined('WP_DEBUG') && WP_DEBUG);
     }
 
     private function extract_api_key_from_request() {

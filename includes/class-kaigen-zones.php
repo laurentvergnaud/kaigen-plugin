@@ -293,6 +293,11 @@ class Kaigen_Zones {
         if (!$post || $post->post_type === 'revision') {
             return new WP_Error('post_not_found', __('Post not found', 'kaigen-connector'), array('status' => 404));
         }
+        // A type Tamiro reaches only (security audit of 2026-11-08): a template, a menu or another plugin's private
+        // type stays out of the zones.
+        if (!in_array($post->post_type, Kaigen_Content::accessible_post_types(), true)) {
+            return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
+        }
         return $post;
     }
 

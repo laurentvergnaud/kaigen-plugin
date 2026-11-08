@@ -419,7 +419,7 @@ class Kaigen_Schema {
      */
     public function assign_template($template_id, $post_ids) {
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
         if ($template_id !== null) {
             $known = wp_list_pluck($this->templates(), 'id');
             if (!in_array($template_id, $known, true)) {
@@ -541,7 +541,7 @@ class Kaigen_Schema {
     public function samples($post_type, $taxonomy, $term, $limit) {
         $post_type = sanitize_key($post_type);
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
         if (!post_type_exists($post_type) || !in_array($post_type, $enabled_types, true)) {
             return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
         }
@@ -590,9 +590,11 @@ class Kaigen_Schema {
             return $clean;
         }
         $previews = array();
+        $types = Kaigen_Content::accessible_post_types();
         foreach (array_slice(array_map('intval', $post_ids), 0, 5) as $post_id) {
             $post = get_post($post_id);
-            if (!$post) {
+            // A post of a type Tamiro reaches only (security audit of 2026-11-08).
+            if (!$post || !in_array($post->post_type, $types, true)) {
                 continue;
             }
             $node = $this->build_node($post, $clean);

@@ -5,7 +5,7 @@ Connect your WordPress site to Tamiro for AI-powered content generation and mana
 ## Features
 
 - **Dual Authentication**: Support for both API Key and WordPress Application Password authentication
-- **Custom Post Types**: Select which post types to expose to Tamiro
+- **Every content type**: Tamiro reaches every public content type of the site, its products and its own types included (since 1.13.0, ADR 0197)
 - **Content Discovery**: Automatically detect and share your site structure, custom fields (ACF, Meta Box, Pods, CMB2), and editor type
 - **Bidirectional Sync**: Generate content in Tamiro and publish directly to WordPress, or update existing posts
 - **Editor Integration**: "Open in Tamiro" button in post editor for seamless editing
@@ -48,6 +48,8 @@ To publish an update that WordPress can install correctly:
 
 The uploaded asset name should start with `kaigen-connector` and end with `.zip`.
 
+Since 1.14.0 (ADR 0199) Tamiro can ask a site to install the latest release: `POST /wp-json/kaigen/v1/self-update`, Tamiro's key only (never a WordPress user), nothing in the request. The plugin reads the latest release on its own repository with the update checker, installs it when it is newer with WordPress's upgrader as a background update does (the plugin stays active), and answers `{status: updated | up_to_date, from, to, latest}`; it refuses `file_mods_disallowed` (409, `DISALLOW_FILE_MODS`), `multisite` (409, the network's files), `filesystem_not_direct` (409) when WordPress cannot write its own files, `update_in_progress` (409), `release_unreadable` (502, the reason logged on the site) and `update_failed` (500) with the upgrader's messages, the server's paths removed; it reads the release on GitHub once a minute at most and gives the upgrade 300 seconds. Since 1.14.0 the update checker offers the latest release's asset only, never the source of a tag or of the branch (security review of 2026-11-08) (`includes/class-kaigen-self-update.php`, tested by `php test/kaigen-plugin/self-update.test.php`). A super admin asks it from Tamiro's page « Extension sur les sites ».
+
 ## Configuration
 
 ### Method 1: API Key Authentication (Recommended)
@@ -75,11 +77,9 @@ The uploaded asset name should start with `kaigen-connector` and end with `.zip`
 
 ## Usage
 
-### Selecting Post Types
+### Post Types
 
-1. Go to **Settings > Tamiro Connector > Post Types** tab
-2. Check the post types you want to expose to Tamiro
-3. Click **Save Changes**
+Since 1.13.0 (ADR 0197) Tamiro reaches every public content type of the site, the media library left out, with nothing to select: the **Settings > Tamiro Connector > Post Types** tab lists them. A choice saved by an older version is no longer read.
 
 ### Setting Permissions
 
@@ -117,6 +117,7 @@ The plugin registers the following REST API endpoints:
 - `POST /wp-json/kaigen/v1/m/api/send` - Relay one measurement call to Tamiro's instance, same origin only, no key (1.5.0)
 - `POST /wp-json/kaigen/v1/m/goals` - What a page found for each measurement goal, from `kaigen-goals.js`, same origin only, passed to Tamiro at most every ten minutes (1.6.0, ADR 0104)
 - `POST /wp-json/kaigen/v1/measure/goals` - The active goal rules pushed by Tamiro at each decision, API key required (1.6.2)
+- `POST /wp-json/kaigen/v1/self-update` - Install the latest release of the plugin's own repository, Tamiro's key only, nothing in the request (1.14.0, ADR 0199)
 - `GET /wp-json/kaigen/v1/schema` - Schema templates and the SEO plugin's schema settings per post type (1.4.0)
 - `POST /wp-json/kaigen/v1/schema/templates` - Save or delete schema templates (1.4.0)
 - `POST /wp-json/kaigen/v1/schema/settings` - Set the schema type of a post type in Yoast or Rank Math, closed lists (1.4.0)
@@ -132,7 +133,7 @@ All endpoints but `m/script`, `m/api/send` and `m/goals` require authentication 
 
 A request authenticated by the API key runs without a WordPress user, so no capability check applies to it. Since 1.3.0 (security audit 2026-10-05, `validate_write_scope` of `includes/class-kaigen-update.php`), what it may write is bounded, and a refusal answers `403` or `422` naming what it refused:
 
-- read, list, create and update only the post types enabled in the **Post Types** tab;
+- read, list, create and update only the public content types of the site, the media library left out (since 1.13.0; the types enabled in the **Post Types** tab before), and since 1.14.0 create only in those types (any existing type before);
 - no meta WordPress protects (a leading underscore), except the SEO plugins' keys (`_yoast_wpseo_*`, `rank_math_*`, `_seopress_*`); `seo.raw_meta` holds SEO keys only; with ACF active, only fields ACF knows;
 - an author only if that user can edit the post type, terms only of the taxonomies of the post type.
 
@@ -225,7 +226,7 @@ add_action('kaigen_after_update', function($post_id, $result) {
 
 ### Sync Fails
 
-1. Check that you have posts in the enabled post types
+1. Check that you have published content
 2. Verify your API key has write permissions
 3. Check sync logs for error details
 4. Increase PHP memory limit if needed

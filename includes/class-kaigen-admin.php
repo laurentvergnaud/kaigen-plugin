@@ -224,14 +224,8 @@ class Kaigen_Admin
         }
 
         // Post Types Tab
+        // Since 1.13.0 (ADR 0197) Tamiro reaches every public content type: no selection is saved.
         if ($tab === 'post-types') {
-            if (isset($input['enabled_post_types']) && is_array($input['enabled_post_types'])) {
-                $sanitized['enabled_post_types'] = array_map('sanitize_text_field', $input['enabled_post_types']);
-            } else {
-                // If not set but we are on this tab, it means all were unchecked
-                $sanitized['enabled_post_types'] = array();
-            }
-
             $sanitized['structured_data_injection_enabled'] = isset($input['structured_data_injection_enabled']) ? 1 : 0;
         }
 
@@ -504,19 +498,16 @@ class Kaigen_Admin
      */
     private function render_post_types_tab($settings, $content)
     {
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
         $structured_data_injection_enabled = !isset($settings['structured_data_injection_enabled']) || (int) $settings['structured_data_injection_enabled'] === 1;
         $post_types = $content->get_custom_post_types();
     ?>
         <input type="hidden" name="kaigen_settings[_tab]" value="post-types">
-        <p><?php _e('Select which post types should be accessible to Tamiro:', 'kaigen-connector'); ?></p>
+        <p><?php _e('Tamiro reaches every public content type of the site:', 'kaigen-connector'); ?></p>
 
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th class="check-column">
-                        <input type="checkbox" id="kaigen-select-all">
-                    </th>
                     <th><?php _e('Post Type', 'kaigen-connector'); ?></th>
                     <th><?php _e('Label', 'kaigen-connector'); ?></th>
                     <th><?php _e('Count', 'kaigen-connector'); ?></th>
@@ -525,13 +516,8 @@ class Kaigen_Admin
             </thead>
             <tbody>
                 <?php foreach ($post_types as $post_type): ?>
+                    <?php if (!in_array($post_type['slug'], $enabled_types, true)) continue; ?>
                     <tr>
-                        <th class="check-column">
-                            <input type="checkbox"
-                                name="kaigen_settings[enabled_post_types][]"
-                                value="<?php echo esc_attr($post_type['slug']); ?>"
-                                <?php checked(in_array($post_type['slug'], $enabled_types)); ?>>
-                        </th>
                         <td><code><?php echo esc_html($post_type['slug']); ?></code></td>
                         <td><?php echo esc_html($post_type['label']); ?></td>
                         <td><?php echo esc_html($post_type['count']); ?></td>
@@ -542,7 +528,7 @@ class Kaigen_Admin
         </table>
 
         <p class="description">
-            <?php _e('Only selected post types will be visible and editable through Tamiro.', 'kaigen-connector'); ?>
+            <?php _e('The protected fields of a content stay out of Tamiro\'s reach, whatever its type.', 'kaigen-connector'); ?>
         </p>
 
         <h3><?php _e('Structured Data', 'kaigen-connector'); ?></h3>

@@ -46,7 +46,7 @@ class Kaigen_Editor_Button {
         }
 
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         if (!in_array($post->post_type, $enabled_types)) {
             return;
@@ -81,7 +81,7 @@ class Kaigen_Editor_Button {
         }
 
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         add_meta_box(
             'kaigen-editor-link',
@@ -134,7 +134,7 @@ class Kaigen_Editor_Button {
         }
 
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         if (!in_array($post->post_type, $enabled_types)) {
             return;

@@ -28,12 +28,21 @@ class Kaigen_Content
     }
 
     /**
+     * The content types Tamiro reads and writes (1.13.0, ADR 0197, Laurent 2026-11-08): every public type of the site,
+     * its products and its own types included, never a selection made in the settings; the media library left out.
+     * What Tamiro may write in a post stays bounded by the write scope (Kaigen_Update::validate_write_scope).
+     */
+    public static function accessible_post_types()
+    {
+        return array_values(array_diff(get_post_types(array('public' => true), 'names'), array('attachment')));
+    }
+
+    /**
      * Get all custom post types
      */
     public function get_custom_post_types()
     {
-        $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array();
+        $enabled_types = self::accessible_post_types();
 
         $post_types = get_post_types(array(), 'objects');
         $result = array();
@@ -151,7 +160,7 @@ class Kaigen_Content
     public function get_all_custom_fields()
     {
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         $all_fields = array();
         foreach ($enabled_types as $post_type) {
@@ -529,7 +538,7 @@ class Kaigen_Content
     public function get_internal_links_candidates($post_type = null, $limit = 100)
     {
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         // A requested type outside the enabled ones lists nothing (security audit 2026-10-05).
         $post_types = $post_type ? array_values(array_intersect(array($post_type), $enabled_types)) : $enabled_types;

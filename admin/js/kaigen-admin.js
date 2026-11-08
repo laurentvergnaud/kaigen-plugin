@@ -22,11 +22,6 @@ jQuery(document).ready(function($) {
         }
     });
 
-    // Select all post types
-    $('#kaigen-select-all').on('change', function() {
-        $('input[name="kaigen_settings[enabled_post_types][]"]').prop('checked', $(this).prop('checked'));
-    });
-
     // Test connection
     $('#kaigen-test-connection').on('click', function(e) {
         e.preventDefault();

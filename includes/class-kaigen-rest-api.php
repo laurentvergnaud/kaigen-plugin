@@ -153,6 +153,24 @@ class Kaigen_REST_API
             'callback' => array($this, 'revert_zones'),
             'permission_callback' => array($this, 'check_permission')
         ));
+
+        // The plugin's own update, triggered by Tamiro (1.14.0, ADR 0199): Tamiro's key only, nothing in the body.
+        register_rest_route($this->namespace, '/self-update', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'self_update'),
+            'permission_callback' => array($this, 'check_api_key_permission')
+        ));
+    }
+
+    public function self_update($request)
+    {
+        $result = Kaigen_Self_Update::run();
+        return is_wp_error($result) ? $result : rest_ensure_response($result);
+    }
+
+    public function check_api_key_permission($request = null)
+    {
+        return Kaigen_Auth::get_instance()->verify_api_key_request();
     }
 
     public function get_zones($request)
@@ -299,7 +317,7 @@ class Kaigen_REST_API
         $page = max(1, $page);
 
         // Get enabled post types
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         // Filter by post types (CSV or array)
         $requested_post_types = $this->parse_csv_or_array($request->get_param('post_type'));
@@ -446,7 +464,9 @@ class Kaigen_REST_API
             'total' => $total,
             'total_pages' => $total_pages,
             'page' => $page,
-            'per_page' => $per_page
+            'per_page' => $per_page,
+            // The types served (1.13.0, ADR 0197): Tamiro reads again from the start when they change.
+            'post_types' => array_values($post_types)
         ));
     }
 
@@ -533,7 +553,7 @@ class Kaigen_REST_API
 
         // Check if post type is enabled
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
         if (!in_array($post_type, $enabled_types, true)) {
             return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
         }
@@ -567,7 +587,7 @@ class Kaigen_REST_API
 
         // Check if post type is enabled
         $settings = get_option('kaigen_settings', array());
-        $enabled_types = isset($settings['enabled_post_types']) ? $settings['enabled_post_types'] : array('post', 'page');
+        $enabled_types = Kaigen_Content::accessible_post_types();
 
         if (!in_array($post->post_type, $enabled_types)) {
             return new WP_Error('post_type_disabled', __('This post type is not enabled', 'kaigen-connector'), array('status' => 403));
@@ -829,7 +849,8 @@ class Kaigen_REST_API
     {
         $content = Kaigen_Content::get_instance();
         $post_type = $request->get_param('post_type');
-        $limit = $request->get_param('limit') ?: 100;
+        // Bounded (security audit of 2026-11-08): `-1` listed every post of every type.
+        $limit = max(1, min(500, intval($request->get_param('limit') ?: 100)));
 
         $candidates = $content->get_internal_links_candidates($post_type, $limit);
 
