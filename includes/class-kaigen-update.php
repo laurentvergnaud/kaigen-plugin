@@ -528,7 +528,7 @@ class Kaigen_Update {
                 $insert_data['post_author'] = intval($post_data['author']['id']);
             }
 
-            $inserted = wp_insert_post($insert_data, true);
+            $inserted = wp_insert_post(wp_slash($insert_data), true);
             if (is_wp_error($inserted)) {
                 error_log('[Tamiro connector] Failed to create post from v2 document: post_id=0, content_length=' . strlen(isset($post_data['content']) ? strval($post_data['content']) : '') . ', error=' . $inserted->get_error_message());
                 return $inserted;
@@ -567,7 +567,7 @@ class Kaigen_Update {
                 if ($this->raw_content_write) {
                     kses_remove_filters();
                 }
-                $result = wp_update_post($update_data, true);
+                $result = wp_update_post(wp_slash($update_data), true);
                 if ($this->raw_content_write) {
                     kses_init_filters();
                     $this->raw_content_write = false;
@@ -622,7 +622,7 @@ class Kaigen_Update {
                 continue;
             }
 
-            update_post_meta($post_id, $key, $this->sanitize_meta_value($value));
+            update_post_meta($post_id, $key, wp_slash($this->sanitize_meta_value($value)));
         }
     }
 
@@ -634,7 +634,7 @@ class Kaigen_Update {
             if (function_exists('update_field')) {
                 update_field($field_key, $field_value, $post_id);
             } else {
-                update_post_meta($post_id, $field_key, $this->sanitize_meta_value($field_value));
+                update_post_meta($post_id, $field_key, wp_slash($this->sanitize_meta_value($field_value)));
             }
         }
     }
@@ -650,7 +650,7 @@ class Kaigen_Update {
             if ($seo_data['title'] === null) {
                 delete_post_meta($post_id, $keys['title']);
             } else {
-                update_post_meta($post_id, $keys['title'], sanitize_text_field($seo_data['title']));
+                update_post_meta($post_id, $keys['title'], wp_slash(sanitize_text_field($seo_data['title'])));
             }
         }
 
@@ -658,7 +658,7 @@ class Kaigen_Update {
             if ($seo_data['description'] === null) {
                 delete_post_meta($post_id, $keys['description']);
             } else {
-                update_post_meta($post_id, $keys['description'], sanitize_textarea_field($seo_data['description']));
+                update_post_meta($post_id, $keys['description'], wp_slash(sanitize_textarea_field($seo_data['description'])));
             }
         }
 
@@ -666,7 +666,7 @@ class Kaigen_Update {
             if ($seo_data['focus_keyword'] === null) {
                 delete_post_meta($post_id, $keys['focus_keyword']);
             } else {
-                update_post_meta($post_id, $keys['focus_keyword'], sanitize_text_field($seo_data['focus_keyword']));
+                update_post_meta($post_id, $keys['focus_keyword'], wp_slash(sanitize_text_field($seo_data['focus_keyword'])));
             }
         }
 
@@ -680,7 +680,7 @@ class Kaigen_Update {
                 if ($meta_value === null) {
                     delete_post_meta($post_id, $meta_key);
                 } else {
-                    update_post_meta($post_id, $meta_key, $this->sanitize_meta_value($meta_value));
+                    update_post_meta($post_id, $meta_key, wp_slash($this->sanitize_meta_value($meta_value)));
                 }
             }
         }

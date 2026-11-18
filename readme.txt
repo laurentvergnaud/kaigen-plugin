@@ -82,6 +82,11 @@ Yes. All communication is encrypted via HTTPS, API keys are stored securely in y
 
 == Changelog ==
 
+= 1.15.0 =
+* Tamiro replaces a dead link, or a link to a redirect, outside the articles' content too (`POST /wp-json/kaigen/v1/links/repoint`): a custom menu item's address, the links of a block navigation, of a template part or a synced pattern saved in the database, and of block, text and HTML widgets. Only the address changes, its fragment kept; nothing else of the menu, the template or the widget moves, and no content is created. A menu's caches are told through the usual menu save hook. A WordPress user (application password mode) needs the right to edit the theme options. A theme's own files and a page builder's headers stay out of reach.
+* The site structure says which redirect manager is active (Yoast Premium, SEOPress PRO, Rank Math's redirections, Redirection), read only: Tamiro tells the team where to create a redirect.
+* Fix: an update keeps the backslashes of what it writes. Since 1.4.0, replacing links, editing a heading or updating a post saved its content, title and fields without the escaping WordPress expects, so the escaped characters of Gutenberg block attributes (`\u002d`, `\u003c`, `\u0022`) lost their backslash and the layout broke on the next save in the editor.
+
 = 1.14.0 =
 * Tamiro can install the latest release of this plugin on the site when its team asks for it (`POST /wp-json/kaigen/v1/self-update`, Tamiro's key only): the update comes from the plugin's own repository, the one WordPress already checks, never from an address in the request. The plugin stays active during the update. A site where WordPress cannot write its own files (FTP credentials asked), that forbids file changes (`DISALLOW_FILE_MODS`) or that is a multisite network is still updated by hand.
 * Updates come from the release asset only: when the latest release cannot be read or has no asset, nothing is offered, never the source of a tag or of the branch.

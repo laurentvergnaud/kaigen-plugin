@@ -89,6 +89,13 @@ class Kaigen_REST_API
             'permission_callback' => array($this, 'check_permission')
         ));
 
+        // Repoint the links of menus, block navigations, template parts, patterns and widgets (1.15.0, ADR 0212)
+        register_rest_route($this->namespace, '/links/repoint', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'repoint_site_links'),
+            'permission_callback' => array($this, 'check_permission')
+        ));
+
         // Get internal linking candidates
         register_rest_route($this->namespace, '/links', array(
             'methods' => 'GET',
@@ -275,6 +282,19 @@ class Kaigen_REST_API
     }
 
     /**
+     * The links outside the articles' content, repointed (1.15.0, ADR 0212).
+     */
+    public function repoint_site_links($request)
+    {
+        $body = $request->get_json_params();
+        $result = Kaigen_Site_Links::repoint(is_array($body) && isset($body['repoints']) ? $body['repoints'] : null);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        return rest_ensure_response($result);
+    }
+
+    /**
      * Get site structure
      */
     public function get_structure($request)
@@ -291,7 +311,9 @@ class Kaigen_REST_API
             'siteName' => get_bloginfo('name'),
             'pluginVersion' => KAIGEN_VERSION,
             // Since 1.10.0 (ADR 0188).
-            'seoPluginVersion' => Kaigen_Abilities::seo_plugin_version()
+            'seoPluginVersion' => Kaigen_Abilities::seo_plugin_version(),
+            // Since 1.15.0 (ADR 0212): the redirect managers the site has, read only.
+            'redirectManagers' => Kaigen_Site_Links::redirect_managers()
         );
 
         // The abilities the site registers, on request only: listing them wakes every plugin's registration,
